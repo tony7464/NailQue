@@ -37,7 +37,8 @@ def _get_paths():
 
 
 ASSETS_DIR, RUNTIME_DIR = _get_paths()
-load_dotenv(RUNTIME_DIR / ".env")
+load_dotenv(ASSETS_DIR / ".env", override=False)
+load_dotenv(RUNTIME_DIR / ".env", override=True)
 MANAGER_SETTINGS_FILE = RUNTIME_DIR / "manager_settings.json"
 LOGS_DIR = RUNTIME_DIR / "logs"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -58,7 +59,7 @@ def _load_app_version() -> str:
 
 
 APP_VERSION = _load_app_version()
-AUTO_UPDATE_REPO = os.getenv("AUTO_UPDATE_REPO", "").strip()
+AUTO_UPDATE_REPO = os.getenv("AUTO_UPDATE_REPO", "tony7464/NailQue").strip()
 AUTO_UPDATE_ENABLED = os.getenv("AUTO_UPDATE_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 AUTO_UPDATE_CHECK_INTERVAL_SECONDS = max(300, int(os.getenv("AUTO_UPDATE_CHECK_INTERVAL_SECONDS", "900")))
 AUTO_UPDATE_INCLUDE_PRERELEASE = os.getenv("AUTO_UPDATE_INCLUDE_PRERELEASE", "false").strip().lower() in {"1", "true", "yes", "on"}
@@ -610,12 +611,16 @@ def update_status():
 
 @app.route("/api/update/check", methods=["POST"])
 def trigger_update_check():
+    if not UPDATE_STATE["enabled"]:
+        return jsonify({"ok": False, "error": "Auto-updater is disabled. Set AUTO_UPDATE_ENABLED=true and AUTO_UPDATE_REPO=tony7464/NailQue."}), 400
     threading.Thread(target=lambda: check_for_updates(download_if_available=True), daemon=True).start()
     return jsonify({"ok": True})
 
 
 @app.route("/api/update/check-sync", methods=["POST"])
 def trigger_update_check_sync():
+    if not UPDATE_STATE["enabled"]:
+        return jsonify({"ok": False, "error": "Auto-updater is disabled. Set AUTO_UPDATE_ENABLED=true and AUTO_UPDATE_REPO=tony7464/NailQue."}), 400
     check_for_updates(download_if_available=True)
     return jsonify({"ok": True, "status": get_update_status()})
 
