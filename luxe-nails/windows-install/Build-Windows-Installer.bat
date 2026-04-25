@@ -47,6 +47,16 @@ if errorlevel 1 (
     exit /b 1
 )
 
+if exist "..\sync_windows_bundle.py" (
+    echo Syncing latest app files into windows-install...
+    call ".venv\Scripts\python.exe" "..\sync_windows_bundle.py"
+    if errorlevel 1 (
+        echo Sync step failed.
+        pause
+        exit /b 1
+    )
+)
+
 echo Building NailQue.exe...
 call ".venv\Scripts\python.exe" build-windows-exe.py
 if errorlevel 1 (

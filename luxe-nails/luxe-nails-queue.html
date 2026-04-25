@@ -488,6 +488,11 @@
                 <div id="mobileTechSessionsPanel" style="color:#a58f6b;font-size:13px;">No active mobile sessions.</div>
             </div>
 
+            <div class="section-title">Service History</div>
+            <div class="activity-log" style="margin-top:0;">
+                <div id="serviceHistoryPanel" style="color:#a58f6b;font-size:13px;">No service records yet.</div>
+            </div>
+
             <div class="section-title">Manager Activity</div>
             <div class="row" style="justify-content:flex-end;margin-bottom:8px;">
                 <button type="button" class="btn-small" style="background:#8e6a35;color:#fff;" onclick="undoLastTechRemoval()">UNDO REMOVE</button>
@@ -523,14 +528,13 @@
             <div class="modal-title" style="color:#d4af77; font-size:24px; font-weight:700;">TECH MOBILE ACCESS</div>
             <div style="color:#a58f6b; margin-top:8px; font-size:14px;">Scan this QR code from a nail tech phone connected to the same Wi-Fi network.</div>
             <div class="mobile-qr-box">
-                <div id="mobileQrContainer"></div>
+                <img id="mobileQrImage" alt="Mobile login QR code" style="display:none;max-width:170px;max-height:170px;border-radius:8px;background:#fff;padding:6px;" />
             </div>
             <div id="mobileAccessUrl" style="word-break:break-all;color:#d4af77;font-size:13px;margin-bottom:10px;"></div>
             <button onclick="copyMobileAccessUrl()" style="width:100%;background:#2d4f75;color:#f5f0e8;font-size:16px;font-weight:700;padding:12px;border:none;border-radius:9999px;cursor:pointer;margin-bottom:10px;">COPY LINK</button>
             <button onclick="closeMobileAccessModal()" style="width:100%;background:transparent;color:#d4af77;border:2px solid #d4af77;padding:12px;border-radius:9999px;cursor:pointer;">CLOSE</button>
         </div>
     </div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <script>
         const servicesMenu = [
@@ -1186,6 +1190,55 @@
             }
         }
 
+        function renderServiceHistory(records) {
+            const panel = document.getElementById("serviceHistoryPanel");
+            if (!panel) return;
+            const items = Array.isArray(records) ? records.slice().reverse().slice(0, 20) : [];
+            if (!items.length) {
+                panel.innerHTML = `<div style="color:#a58f6b;">No service records yet.</div>`;
+                return;
+            }
+            panel.innerHTML = items.map((record) => {
+                const tech = escapeHtml(record.tech || "Tech");
+                const customer = escapeHtml(record.customer || "Customer");
+                const services = Array.isArray(record.selectedServices) ? escapeHtml(record.selectedServices.join(", ")) : "No services";
+                const completed = record.completedAt ? new Date(record.completedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "";
+                const total = Number(record.total || 0).toFixed(2);
+                return `<div class="activity-row"><span style="color:#f5f0e8;">${tech} • ${customer}<div style="color:#a58f6b;font-size:12px;">${services} • $${total}</div></span><span class="activity-time">${completed}</span></div>`;
+            }).join("");
+        }
+
+        async function fetchServiceHistory() {
+            try {
+                const response = await fetch("/api/services/history");
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.error || "Could not load service history.");
+                }
+                renderServiceHistory(data.records || []);
+            } catch (error) {
+                renderServiceHistory([]);
+            }
+        }
+
+        async function recordServiceHistoryFromFrontDesk(entry) {
+            try {
+                await fetch("/api/services/record", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        tech: entry.tech,
+                        customer: entry.customer,
+                        selectedServiceIndexes: entry.selectedServiceIndexes || [],
+                        completedAt: entry.completedAt,
+                        source: "frontdesk"
+                    })
+                });
+            } catch (error) {
+                // local service completion still succeeds
+            }
+        }
+
         function renderManagerActivityLog() {
             const container = document.getElementById("managerActivityLog");
             if (!container) return;
@@ -1321,6 +1374,7 @@
             renderManagerActivityLog();
             fetchUpdateStatus(false);
             fetchMobileTechSessions();
+            fetchServiceHistory();
             showManagerMessage("");
             document.getElementById("currentManagerPinInput").value = "";
             document.getElementById("newManagerPinInput").value = "";
@@ -1687,6 +1741,12 @@
                 selectedServices,
                 completedAt: new Date().toISOString()
             });
+            recordServiceHistoryFromFrontDesk({
+                tech: currentFinishingTech,
+                customer: tech.current || "Customer",
+                selectedServiceIndexes,
+                completedAt: new Date().toISOString()
+            });
             tech.status = "Available";
             tech.current = null;
             tech.startTime = null;
@@ -1935,12 +1995,14 @@
                 }
                 mobileAccessUrl = data.mobile_url || "";
                 document.getElementById("mobileAccessUrl").textContent = mobileAccessUrl;
-                const qrContainer = document.getElementById("mobileQrContainer");
-                qrContainer.innerHTML = "";
-                if (window.QRCode && mobileAccessUrl) {
-                    new QRCode(qrContainer, { text: mobileAccessUrl, width: 170, height: 170 });
+                const qrImage = document.getElementById("mobileQrImage");
+                const qrDataUrl = data.mobile_qr_data_url || "";
+                if (qrDataUrl) {
+                    qrImage.src = qrDataUrl;
+                    qrImage.style.display = "block";
                 } else {
-                    qrContainer.textContent = "QR unavailable.";
+                    qrImage.removeAttribute("src");
+                    qrImage.style.display = "none";
                 }
                 document.getElementById("mobileAccessModal").style.display = "flex";
             } catch (error) {
@@ -2047,11 +2109,16 @@
                 if (managerOpen) fetchMobileTechSessions();
             }, 10000);
             setInterval(() => {
+                const managerOpen = document.getElementById("managerModal").style.display === "flex";
+                if (managerOpen) fetchServiceHistory();
+            }, 12000);
+            setInterval(() => {
                 fetchSharedStateFromServer();
             }, 4000);
             updateClock();
             setupSoundEffects();
             fetchUpdateStatus(false);
+            fetchServiceHistory();
             setTimeout(() => playSoundEffect("startup"), 220);
             console.log("%c✅ M. VINCÉ Nail Spa Queue System Ready with Tech Management", "color:#d4af77;font-size:18px");
         }

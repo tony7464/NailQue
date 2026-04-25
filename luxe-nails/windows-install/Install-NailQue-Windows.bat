@@ -52,16 +52,32 @@ if errorlevel 1 (
     exit /b 1
 )
 
+if exist "..\sync_windows_bundle.py" (
+    echo Syncing latest app files into windows-install...
+    call ".venv\Scripts\python.exe" "..\sync_windows_bundle.py"
+    if errorlevel 1 (
+        echo Sync step failed.
+        pause
+        exit /b 1
+    )
+)
+
 if not exist "logs\" mkdir "logs"
 if not exist "manager_settings.json" (
     > "manager_settings.json" echo {}
 )
 if not exist ".env" (
-    (
-        echo AUTO_OPEN_BROWSER=true
-        echo USE_DESKTOP_WINDOW=true
-        echo MANAGER_PIN=1234
-    ) > ".env"
+    if exist ".env.example" (
+        copy ".env.example" ".env" >nul
+    ) else (
+        (
+            echo AUTO_OPEN_BROWSER=true
+            echo USE_DESKTOP_WINDOW=true
+            echo MANAGER_PIN=1234
+            echo PORT=5001
+            echo HOST=0.0.0.0
+        ) > ".env"
+    )
 )
 
 echo Creating desktop launcher shortcut...

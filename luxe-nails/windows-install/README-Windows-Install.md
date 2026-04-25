@@ -7,6 +7,7 @@ This folder contains only the files needed to run NailQue on Windows.
 - `app.py`
 - `luxe-nails-queue.html`
 - `luxe-nails-employee.html`
+- `luxe-nails-mobile.html`
 - `assets/`
 - `requirements-windows.txt`
 - `Install-NailQue-Windows.bat`
@@ -29,4 +30,5 @@ This folder contains only the files needed to run NailQue on Windows.
 ## Notes
 
 - This bundle contains only Windows runtime/install files.
+- `sync_windows_bundle.py` is used during install/build to refresh this folder from the latest root project files.
 - If Python is not installed, the installer will prompt you to install Python 3.10+ first.

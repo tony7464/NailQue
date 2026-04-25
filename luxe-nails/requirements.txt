@@ -2,3 +2,5 @@ Flask
 python-dotenv
 pyinstaller
 pywebview
+qrcode
+Pillow

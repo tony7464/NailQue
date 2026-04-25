@@ -5,10 +5,19 @@ from pathlib import Path
 
 def build() -> int:
     root = Path(__file__).resolve().parent
+    project_root = root.parent
+
+    sync_script = project_root / "sync_windows_bundle.py"
+    if sync_script.exists():
+        sync_result = subprocess.run([sys.executable, str(sync_script)], cwd=str(project_root), check=False)
+        if sync_result.returncode != 0:
+            return sync_result.returncode
 
     add_data = [
         "luxe-nails-queue.html;.",
         "luxe-nails-employee.html;.",
+        "luxe-nails-mobile.html;.",
+        "VERSION;.",
         "assets/cursors;assets/cursors",
         "assets/icons;assets/icons",
         "assets/sounds;assets/sounds",
