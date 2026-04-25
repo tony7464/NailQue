@@ -246,37 +246,44 @@
         ];
 
         let currentTech = null;
-        let techs = {};
+        let techCredentials = {};
+        let serviceHistoryRecords = [];
         let toastTimer = null;
         const soundFx = {
             startup: "/assets/sounds/startup_fx.mp3",
             click: "/assets/sounds/click_fx.mp3",
         };
 
-        function loadSharedData() {
-            const savedTechs = localStorage.getItem("nailTechNames");
-            if (savedTechs) {
-                const names = JSON.parse(savedTechs);
-                const creds = JSON.parse(localStorage.getItem("nailTechCredentials") || "{}");
-                techs = {};
-                names.forEach(name => techs[name] = creds[name] || {identifier:"", password:""});
+        async function loadSharedData() {
+            try {
+                const response = await fetch("/api/shared/state");
+                const data = await response.json();
+                if (!response.ok || !data.ok || !data.state || typeof data.state.credentials !== "object") {
+                    throw new Error("Shared state unavailable");
+                }
+                techCredentials = data.state.credentials || {};
+                localStorage.setItem("nailTechCredentials", JSON.stringify(techCredentials));
+            } catch (error) {
+                techCredentials = JSON.parse(localStorage.getItem("nailTechCredentials") || "{}");
             }
         }
 
-        function performEmployeeLogin() {
+        async function performEmployeeLogin() {
             const id = document.getElementById("loginIdentifier").value.trim().toLowerCase();
             const pass = document.getElementById("loginPassword").value;
             if (!id || !pass) {
                 showToast("Please enter both fields.", true);
                 return;
             }
-            
-            for (let name in techs) {
-                const t = techs[name];
+
+            // Refresh credentials from the local server first, then fall back.
+            await loadSharedData();
+            for (let name in techCredentials) {
+                const t = techCredentials[name];
                 if (t.identifier && t.identifier.toLowerCase() === id && t.password === pass) {
                     currentTech = name;
                     localStorage.setItem("employeeLastLoginId", id);
-                    showDashboard();
+                    await showDashboard();
                     showToast(`Welcome, ${name}.`, false);
                     return;
                 }
@@ -284,10 +291,11 @@
             showToast("Invalid credentials.", true);
         }
 
-        function showDashboard() {
+        async function showDashboard() {
             document.getElementById("loginScreen").style.display = "none";
             document.getElementById("dashboardScreen").style.display = "flex";
             document.getElementById("dashName").textContent = currentTech;
+            await loadServiceHistory();
             renderWeeklyStats();
         }
 
@@ -313,17 +321,29 @@
         }
 
         function getEmployeeWeekRecords(techName) {
-            const allRecords = JSON.parse(localStorage.getItem("mvServiceRecords") || "[]");
             const now = new Date();
             const start = new Date(now);
             start.setHours(0, 0, 0, 0);
             start.setDate(start.getDate() - 6);
 
-            return allRecords.filter((record) => {
+            return serviceHistoryRecords.filter((record) => {
                 if (!record || record.tech !== techName || !record.completedAt) return false;
                 const completed = new Date(record.completedAt);
                 return completed >= start && completed <= now;
             });
+        }
+
+        async function loadServiceHistory() {
+            try {
+                const response = await fetch("/api/services/history");
+                const data = await response.json();
+                if (!response.ok || !data.ok || !Array.isArray(data.records)) {
+                    throw new Error("History unavailable");
+                }
+                serviceHistoryRecords = data.records;
+            } catch (error) {
+                serviceHistoryRecords = JSON.parse(localStorage.getItem("mvServiceRecords") || "[]");
+            }
         }
 
         function renderDailyBreakdown(records) {
@@ -361,8 +381,9 @@
             }, 0);
         }
 
-        function init() {
-            loadSharedData();
+        async function init() {
+            await loadSharedData();
+            await loadServiceHistory();
             const savedLoginId = localStorage.getItem("employeeLastLoginId");
             if (savedLoginId) {
                 document.getElementById("loginIdentifier").value = savedLoginId;
