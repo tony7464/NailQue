@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M. VINCÉ Nail Spa • Live Queue</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Poppins:wght@400;500;600&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: #0f0c0a;
+            color: #f5f0e8;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: linear-gradient(90deg, #1a1208, #3d2a1f);
+            color: #d4af77;
+            text-align: center;
+            padding: 20px 0;
+            font-family: 'Playfair Display', serif;
+            font-size: 42px;
+            font-weight: 700;
+            letter-spacing: 4px;
+        }
+
+        .header::after {
+            content: "NAIL SPA";
+            display: block;
+            font-size: 18px;
+            letter-spacing: 6px;
+            margin-top: 4px;
+        }
+
+        .main { flex: 1; display: flex; gap: 24px; padding: 24px; overflow: hidden; }
+
+        .tech-board { flex: 2; background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); border-radius: 24px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
+
+        .tech-panel {
+            background: rgba(255,255,255,0.08);
+            border-radius: 20px;
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            gap: 28px;
+        }
+
+        .tech-name {
+            font-size: 44px;
+            font-family: 'Playfair Display', serif;
+            font-weight: 700;
+            color: #d4af77;
+            min-width: 240px;
+        }
+
+        .status { font-size: 32px; font-weight: 600; padding: 14px 36px; border-radius: 9999px; min-width: 240px; text-align: center; }
+        .available { background: #d4af77; color: #1a1208; }
+        .busy { background: #c48b6f; color: #fff; }
+        .offline { background: #4a3f35; color: #d4af77; }
+
+        .buttons { display: flex; gap: 12px; }
+        .btn { font-size: 20px; font-weight: 600; padding: 14px 24px; border: none; border-radius: 9999px; cursor: pointer; }
+
+        .queue-panel { flex: 1; background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); border-radius: 24px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); display: flex; flex-direction: column; }
+
+        .queue-header { font-size: 34px; font-weight: 700; color: #d4af77; margin-bottom: 18px; }
+
+        .queue-list {
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .queue-item {
+            background: rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 12px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .add-btn {
+            background: linear-gradient(90deg, #d4af77, #c48b6f);
+            color: #1a1208;
+            font-size: 26px;
+            font-weight: 700;
+            padding: 22px 60px;
+            border: none;
+            border-radius: 9999px;
+            cursor: pointer;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .field-label {
+            color: #d4af77;
+            font-size: 16px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .text-input {
+            width: 100%;
+            background: #2a221b;
+            border: 1px solid #3d2a1f;
+            color: #f5f0e8;
+            border-radius: 12px;
+            padding: 14px 16px;
+            font-size: 18px;
+            margin-bottom: 14px;
+        }
+
+        .select-input {
+            width: 100%;
+            background: #2a221b;
+            border: 1px solid #3d2a1f;
+            color: #f5f0e8;
+            border-radius: 12px;
+            padding: 12px 14px;
+            font-size: 16px;
+            margin-bottom: 12px;
+        }
+
+        .section-title {
+            color: #d4af77;
+            font-size: 20px;
+            font-weight: 700;
+            margin: 10px 0 8px;
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .scheduled { background: #6b4ca5; color: #f5f0e8; }
+    </style>
+</head>
+<body>
+    <div class="header">M. VINCÉ</div>
+    <div class="main">
+        <div class="tech-board" id="techBoard"></div>
+        <div class="queue-panel">
+            <div class="queue-header">WAITING CUSTOMERS</div>
+            <div class="queue-list" id="queueList"></div>
+        </div>
+    </div>
+    <div class="footer" style="background:#1a1208; padding:18px 30px; display:flex; justify-content:space-between; align-items:center;">
+        <button class="add-btn" onclick="openAddCustomerModal()">+ ADD NEW CUSTOMER</button>
+        <div id="clock" style="color:#d4af77;font-size:28px;font-weight:600;"></div>
+        <div class="row">
+            <button onclick="openManagerAccess()" style="background:none;border:2px solid #d4af77;color:#d4af77;font-size:16px;padding:8px 14px;border-radius:9999px;cursor:pointer">TECH MANAGEMENT</button>
+            <button onclick="toggleFullscreen()" style="background:none;border:none;color:#d4af77;font-size:22px;cursor:pointer">⛶ FULLSCREEN</button>
+        </div>
+    </div>
+
+    <!-- ADD CUSTOMER MODAL -->
+    <div class="modal" id="addCustomerModal" style="display:none;">
+        <div class="modal-content" style="max-width:560px; width:100%; background:#1f1914; border-radius:18px; padding:24px;">
+            <div class="modal-title" style="color:#d4af77; font-size:28px; font-weight:700; margin-bottom:16px;">ADD NEW CUSTOMER</div>
+            <label class="field-label" for="customerNameInput">Customer Name</label>
+            <input id="customerNameInput" class="text-input" type="text" placeholder="Enter customer name" />
+
+            <button onclick="submitAddCustomerModal()" style="width:100%;background:#d4af77;color:#1a1208;font-size:22px;font-weight:700;padding:16px;border:none;border-radius:9999px;cursor:pointer;margin-top:8px;margin-bottom:10px;">
+                ADD TO QUEUE
+            </button>
+            <button onclick="closeAddCustomerModal()" style="width:100%;background:transparent;color:#d4af77;border:2px solid #d4af77;padding:14px;border-radius:9999px;cursor:pointer;">
+                CANCEL
+            </button>
+        </div>
+    </div>
+
+    <!-- FINISH SERVICE MODAL - FULL MENU -->
+    <div class="modal" id="finishModal" style="display:none;">
+        <div class="modal-content" style="max-width:720px; width:100%; background:#1f1914; border-radius:18px; padding:24px;">
+            <div class="modal-title" style="color:#d4af77; font-size:28px; font-weight:700;">FINISH SERVICE - <span id="finishTechName"></span></div>
+            <div id="finishCustomerNameDisplay" style="font-size:36px;font-weight:700;color:#f5f0e8;margin:16px 0;"></div>
+
+            <div style="margin:20px 0;">
+                <h3 style="color:#d4af77;margin-bottom:12px;">Select Services</h3>
+                <div id="serviceList" style="max-height:380px;overflow-y:auto;"></div>
+            </div>
+
+            <div style="background:#2a221b;padding:20px;border-radius:16px;margin:20px 0;">
+                <div style="display:flex;justify-content:space-between;font-size:24px;">
+                    <span>Total Bill</span>
+                    <span id="totalAmount" style="color:#d4af77;font-weight:700;">$0.00</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:18px;color:#a58f6b;margin-top:8px;">
+                    <span>Employee Share (60%)</span>
+                    <span id="employeeEarnings" style="font-weight:700;">$0.00</span>
+                </div>
+            </div>
+
+            <button onclick="completeServiceWithEarnings()" style="width:100%;background:#d4af77;color:#1a1208;font-size:24px;font-weight:700;padding:20px;border:none;border-radius:9999px;cursor:pointer;margin-bottom:12px;">COMPLETE SERVICE</button>
+            <button onclick="cancelFinishModal()" style="width:100%;background:transparent;color:#d4af77;border:2px solid #d4af77;padding:16px;border-radius:9999px;cursor:pointer;">CANCEL</button>
+        </div>
+    </div>
+
+    <!-- MANAGER MODAL -->
+    <div class="modal" id="managerModal" style="display:none;">
+        <div class="modal-content" style="max-width:760px; width:100%; background:#1f1914; border-radius:18px; padding:24px; max-height:90vh; overflow-y:auto;">
+            <div class="modal-title" style="color:#d4af77; font-size:28px; font-weight:700;">NAIL TECH MANAGEMENT</div>
+
+            <div class="section-title">Invite Nail Tech</div>
+            <input id="inviteTechName" class="text-input" type="text" placeholder="Tech name (e.g., Mia)" />
+            <input id="inviteContact" class="text-input" type="text" placeholder="Email or phone number" />
+            <select id="inviteChannel" class="select-input">
+                <option value="email">Email</option>
+                <option value="sms">Text Message</option>
+            </select>
+            <button onclick="sendTechInvite()" style="width:100%;background:#d4af77;color:#1a1208;font-size:18px;font-weight:700;padding:12px;border:none;border-radius:9999px;cursor:pointer;">SEND INVITE</button>
+
+            <div class="section-title">Bonus Round Window</div>
+            <div class="row">
+                <div style="flex:1;">
+                    <label class="field-label" for="bonusStartInput">Start</label>
+                    <input id="bonusStartInput" class="text-input" type="time" />
+                </div>
+                <div style="flex:1;">
+                    <label class="field-label" for="bonusEndInput">End</label>
+                    <input id="bonusEndInput" class="text-input" type="time" />
+                </div>
+            </div>
+            <button onclick="saveBonusSettings()" style="width:100%;background:#c48b6f;color:#fff;font-size:16px;font-weight:700;padding:10px;border:none;border-radius:9999px;cursor:pointer;">SAVE BONUS HOURS</button>
+
+            <div class="section-title">Tech Status Overrides</div>
+            <div id="managerTechList"></div>
+            
+            <div class="section-title">Manager PIN</div>
+            <input id="currentManagerPinInput" class="text-input" type="password" placeholder="Current PIN" />
+            <input id="newManagerPinInput" class="text-input" type="password" placeholder="New PIN (min 4 digits)" />
+            <button onclick="changeManagerPin()" style="width:100%;background:#8f6bc4;color:#fff;font-size:16px;font-weight:700;padding:10px;border:none;border-radius:9999px;cursor:pointer;">UPDATE MANAGER PIN</button>
+
+            <div id="managerMessage" style="margin-top:10px;color:#d4af77;font-size:14px;"></div>
+
+            <button onclick="closeManagerModal()" style="width:100%;margin-top:14px;background:transparent;color:#d4af77;border:2px solid #d4af77;padding:14px;border-radius:9999px;cursor:pointer;">CLOSE</button>
+        </div>
+    </div>
+
+    <script>
+        const servicesMenu = [
+            {name: "Spa Manicure", price: 40},
+            {name: "Signature Manicure", price: 50},
+            {name: "Ultimate M.V. Spa Manicure", price: 65},
+            {name: "Spa Pedicure", price: 60},
+            {name: "Signature Pedicure", price: 70},
+            {name: "Full Set Acrylic", price: 55},
+            {name: "Fill", price: 40},
+            {name: "Gel Polish", price: 25},
+            {name: "Polish Change", price: 15},
+            {name: "Nail Art (per nail)", price: 5},
+            {name: "Coffin / Stiletto Shape (+$5)", price: 5},
+            {name: "Almond / Ballerina Shape (+$5)", price: 5},
+            {name: "Paraffin Treatment", price: 15},
+            {name: "Sugar Scrub", price: 10},
+            {name: "Collagen Gloves", price: 20},
+            {name: "Hot Stone Massage", price: 15}
+        ];
+
+        let techs = {
+            Anna: { status: "Offline", current: null, startTime: null, earnings: 0 },
+            Bella: { status: "Offline", current: null, startTime: null, earnings: 0 }
+        };
+        let waitingQueue = [];
+        let currentFinishingTech = null;
+        let nextCustomerId = 1;
+        let bonusOrder = [];
+
+        const queueStateKey = "mvQueueState";
+        const serviceRecordsKey = "mvServiceRecords";
+        const bonusSettingsKey = "mvBonusSettings";
+        const bonusClockInsKey = "mvBonusClockIns";
+        const managerSessionKey = "mvManagerSession";
+
+        let bonusSettings = { start: "08:00", end: "09:30" };
+        let bonusClockIns = {};
+
+        function nowMinutes() {
+            const d = new Date();
+            return d.getHours() * 60 + d.getMinutes();
+        }
+
+        function hhmmToMinutes(value) {
+            if (!value || !value.includes(":")) return 0;
+            const [h, m] = value.split(":").map((v) => parseInt(v, 10));
+            return (h * 60) + m;
+        }
+
+        function isInBonusWindow() {
+            const start = hhmmToMinutes(bonusSettings.start);
+            const end = hhmmToMinutes(bonusSettings.end);
+            const current = nowMinutes();
+            return current >= start && current <= end;
+        }
+
+        function rebuildBonusOrder() {
+            if (!isInBonusWindow()) {
+                bonusOrder = [];
+                return;
+            }
+            bonusOrder = Object.entries(bonusClockIns)
+                .filter(([name]) => techs[name] && techs[name].status === "Available")
+                .sort((a, b) => a[1] - b[1])
+                .map(([name]) => name);
+        }
+
+        function getNextAvailableTechForAssignment() {
+            rebuildBonusOrder();
+            if (bonusOrder.length > 0) {
+                return bonusOrder.shift();
+            }
+            const available = Object.keys(techs)
+                .filter((name) => techs[name].status === "Available")
+                .sort((a, b) => {
+                    const aTime = bonusClockIns[a] || Number.MAX_SAFE_INTEGER;
+                    const bTime = bonusClockIns[b] || Number.MAX_SAFE_INTEGER;
+                    return aTime - bTime;
+                });
+            return available[0] || null;
+        }
+
+        function autoAssign() {
+            const availableTech = getNextAvailableTechForAssignment();
+            if (!availableTech || waitingQueue.length === 0) {
+                renderQueue();
+                renderTechBoard();
+                return;
+            }
+
+            const customer = waitingQueue.shift();
+            techs[availableTech].status = "Busy";
+            techs[availableTech].current = customer.name;
+            techs[availableTech].startTime = Date.now();
+            saveQueueState();
+            renderQueue();
+            renderTechBoard();
+            autoAssign();
+        }
+
+        function renderQueue() {
+            const queue = document.getElementById("queueList");
+            if (waitingQueue.length === 0) {
+                queue.innerHTML = `<div style="color:#a58f6b; text-align:center; padding:14px;">No customers waiting</div>`;
+                return;
+            }
+
+            queue.innerHTML = waitingQueue
+                .map((customer, idx) => {
+                    const waitMins = Math.max(0, Math.round((Date.now() - customer.arrival) / 60000));
+                    return `
+                    <div class="queue-item">
+                        <div><strong>#${idx + 1}</strong> ${customer.name}</div>
+                        <div style="color:#d4af77;">${waitMins} min</div>
+                    </div>`;
+                })
+                .join("");
+        }
+
+        function statusBadgeForTech(tech) {
+            if (tech.status === "Scheduled Appointment") {
+                return `<div class="status scheduled">SCHEDULED APPOINTMENT</div>`;
+            }
+            if (tech.status === "Available") return `<div class="status available">AVAILABLE</div>`;
+            if (tech.status === "Busy") {
+                const mins = tech.startTime ? Math.max(0, Math.round((Date.now() - tech.startTime) / 60000)) : 0;
+                return `<div class="status busy">BUSY ${tech.current ? `<div style="font-size:18px; margin-top:6px;">${tech.current} • ${mins}m</div>` : ""}</div>`;
+            }
+            return `<div class="status offline">OFFLINE</div>`;
+        }
+
+        function renderTechBoard() {
+            const board = document.getElementById("techBoard");
+            board.innerHTML = `<div style="font-size:26px; color:#d4af77; margin-bottom:12px; text-align:center;">LIVE TECH STATUS</div>`;
+            Object.keys(techs).forEach((name) => {
+                const t = techs[name];
+                board.innerHTML += `
+                <div class="tech-panel">
+                    <div><div class="tech-name">${name}</div></div>
+                    ${statusBadgeForTech(t)}
+                    <div class="buttons">
+                        <button class="btn" onclick="signInTech('${name}')" style="background:#d4af77;color:#1a1208;">READY</button>
+                        <button class="btn" onclick="finishTech('${name}')" style="background:#c48b6f;color:#fff;">FINISH</button>
+                    </div>
+                </div>`;
+            });
+        }
+
+        function renderManagerTechList() {
+            const el = document.getElementById("managerTechList");
+            const names = Object.keys(techs);
+            if (names.length === 0) {
+                el.innerHTML = `<div style="color:#a58f6b;">No techs found.</div>`;
+                return;
+            }
+            el.innerHTML = names.map((name) => `
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;background:#2a221b;padding:10px;border-radius:12px;">
+                    <div style="flex:1;color:#f5f0e8;font-weight:600;">${name}</div>
+                    <select class="select-input" style="margin-bottom:0;max-width:220px;" onchange="setTechStatusOverride('${name}', this.value)">
+                        <option value="Offline" ${techs[name].status === "Offline" ? "selected" : ""}>Offline</option>
+                        <option value="Available" ${techs[name].status === "Available" ? "selected" : ""}>Available</option>
+                        <option value="Scheduled Appointment" ${techs[name].status === "Scheduled Appointment" ? "selected" : ""}>Scheduled Appointment</option>
+                    </select>
+                </div>
+            `).join("");
+        }
+
+        function showManagerMessage(msg, isError) {
+            const el = document.getElementById("managerMessage");
+            el.style.color = isError ? "#ff9b9b" : "#d4af77";
+            el.textContent = msg;
+        }
+
+        async function openManagerAccess() {
+            if (sessionStorage.getItem(managerSessionKey) !== "unlocked") {
+                const entered = prompt("Enter Manager PIN:");
+                if (!entered) {
+                    return;
+                }
+                try {
+                    const response = await fetch("/api/manager/verify-pin", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ pin: entered })
+                    });
+                    const data = await response.json();
+                    if (!response.ok || !data.ok) {
+                        alert("Invalid PIN.");
+                        return;
+                    }
+                } catch (error) {
+                    alert("Could not verify manager PIN.");
+                    return;
+                }
+                sessionStorage.setItem(managerSessionKey, "unlocked");
+            }
+            document.getElementById("bonusStartInput").value = bonusSettings.start;
+            document.getElementById("bonusEndInput").value = bonusSettings.end;
+            renderManagerTechList();
+            showManagerMessage("");
+            document.getElementById("currentManagerPinInput").value = "";
+            document.getElementById("newManagerPinInput").value = "";
+            document.getElementById("managerModal").style.display = "flex";
+        }
+
+        function closeManagerModal() {
+            document.getElementById("managerModal").style.display = "none";
+        }
+
+        function saveBonusSettings() {
+            const start = document.getElementById("bonusStartInput").value;
+            const end = document.getElementById("bonusEndInput").value;
+            if (!start || !end || hhmmToMinutes(start) >= hhmmToMinutes(end)) {
+                showManagerMessage("Invalid bonus hours. End must be after start.", true);
+                return;
+            }
+            bonusSettings = { start, end };
+            localStorage.setItem(bonusSettingsKey, JSON.stringify(bonusSettings));
+            rebuildBonusOrder();
+            showManagerMessage("Bonus hours saved.");
+        }
+
+        function setTechStatusOverride(name, status) {
+            const tech = techs[name];
+            if (!tech) return;
+            if (status === "Available" && !bonusClockIns[name]) {
+                bonusClockIns[name] = Date.now();
+                localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
+            }
+            tech.status = status;
+            if (status !== "Busy") {
+                tech.current = null;
+                tech.startTime = null;
+            }
+            saveQueueState();
+            renderTechBoard();
+            renderManagerTechList();
+            if (status === "Available") autoAssign();
+        }
+
+        async function changeManagerPin() {
+            const currentPin = document.getElementById("currentManagerPinInput").value.trim();
+            const newPin = document.getElementById("newManagerPinInput").value.trim();
+            if (!currentPin || !newPin) {
+                showManagerMessage("Please enter current and new PIN.", true);
+                return;
+            }
+            try {
+                const response = await fetch("/api/manager/set-pin", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ currentPin, newPin })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || "Failed to update PIN.");
+                }
+                document.getElementById("currentManagerPinInput").value = "";
+                document.getElementById("newManagerPinInput").value = "";
+                showManagerMessage("Manager PIN updated.");
+            } catch (error) {
+                showManagerMessage(error.message, true);
+            }
+        }
+
+        async function sendTechInvite() {
+            const techName = document.getElementById("inviteTechName").value.trim();
+            const contact = document.getElementById("inviteContact").value.trim();
+            const channel = document.getElementById("inviteChannel").value;
+            if (!techName || !contact) {
+                showManagerMessage("Please provide tech name and contact.", true);
+                return;
+            }
+
+            try {
+                const response = await fetch("/api/invites", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ techName, contact, channel })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || "Invite failed");
+
+                upsertTechAccountFromInvite(data.techName || techName, data.identifier || contact);
+                showManagerMessage(`Invite sent to ${contact}.`);
+                document.getElementById("inviteTechName").value = "";
+                document.getElementById("inviteContact").value = "";
+                renderManagerTechList();
+            } catch (error) {
+                showManagerMessage(error.message, true);
+            }
+        }
+
+        function upsertTechAccountFromInvite(techName, identifier) {
+            if (!techs[techName]) {
+                techs[techName] = { status: "Offline", current: null, startTime: null, earnings: 0 };
+            }
+            const names = JSON.parse(localStorage.getItem("nailTechNames") || "[]");
+            if (!names.includes(techName)) names.push(techName);
+            localStorage.setItem("nailTechNames", JSON.stringify(names));
+
+            const creds = JSON.parse(localStorage.getItem("nailTechCredentials") || "{}");
+            creds[techName] = creds[techName] || {};
+            creds[techName].identifier = identifier;
+            creds[techName].password = creds[techName].password || "setup-required";
+            localStorage.setItem("nailTechCredentials", JSON.stringify(creds));
+            saveQueueState();
+        }
+
+        function openFinishModal(techName) {
+            const tech = techs[techName];
+            if (tech.status !== "Busy") {
+                alert(`${techName} is not currently serving a customer.`);
+                return;
+            }
+            currentFinishingTech = techName;
+            document.getElementById("finishTechName").textContent = techName;
+            document.getElementById("finishCustomerNameDisplay").textContent = tech.current || "Customer";
+            let html = "";
+            servicesMenu.forEach((service, i) => {
+                html += `
+                <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #3d2a1f;">
+                    <label><input type="checkbox" onchange="calculateTotal()" data-index="${i}"> ${service.name}</label>
+                    <span>$${service.price}</span>
+                </div>`;
+            });
+            document.getElementById("serviceList").innerHTML = html;
+            document.getElementById("totalAmount").textContent = "$0.00";
+            document.getElementById("employeeEarnings").textContent = "$0.00";
+            document.getElementById("finishModal").style.display = "flex";
+        }
+
+        function calculateTotal() {
+            let total = 0;
+            document.querySelectorAll("#serviceList input:checked").forEach((cb) => {
+                total += servicesMenu[parseInt(cb.dataset.index, 10)].price;
+            });
+            document.getElementById("totalAmount").textContent = `$${total.toFixed(2)}`;
+            document.getElementById("employeeEarnings").textContent = `$${(total * 0.6).toFixed(2)}`;
+        }
+
+        function completeServiceWithEarnings() {
+            if (!currentFinishingTech) return;
+            const tech = techs[currentFinishingTech];
+            const total = parseFloat(document.getElementById("totalAmount").textContent.replace("$", "")) || 0;
+            const selectedServiceIndexes = Array.from(document.querySelectorAll("#serviceList input:checked"))
+                .map((cb) => parseInt(cb.dataset.index, 10))
+                .filter((idx) => Number.isInteger(idx) && servicesMenu[idx]);
+            const selectedServices = selectedServiceIndexes.map((idx) => servicesMenu[idx].name);
+            const employeeShare = total * 0.6;
+
+            tech.earnings = (tech.earnings || 0) + employeeShare;
+            saveServiceRecord({
+                tech: currentFinishingTech,
+                customer: tech.current || "Customer",
+                total,
+                employeeShare,
+                selectedServiceIndexes,
+                selectedServices,
+                completedAt: new Date().toISOString()
+            });
+            tech.status = "Available";
+            tech.current = null;
+            tech.startTime = null;
+            if (!bonusClockIns[currentFinishingTech]) {
+                bonusClockIns[currentFinishingTech] = Date.now();
+            }
+            localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
+            document.getElementById("finishModal").style.display = "none";
+            document.getElementById("finishTechName").textContent = "";
+            currentFinishingTech = null;
+            saveQueueState();
+            autoAssign();
+            alert(`Service complete!\nEmployee earned: $${employeeShare.toFixed(2)}`);
+        }
+
+        function cancelFinishModal() {
+            currentFinishingTech = null;
+            document.getElementById("finishTechName").textContent = "";
+            document.getElementById("finishModal").style.display = "none";
+        }
+
+        function finishTech(name) { openFinishModal(name); }
+
+        function signInTech(name) {
+            const tech = techs[name];
+            if (!tech || tech.status === "Busy" || tech.status === "Scheduled Appointment") return;
+            tech.status = "Available";
+            if (!bonusClockIns[name]) {
+                bonusClockIns[name] = Date.now();
+                localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
+            }
+            saveQueueState();
+            autoAssign();
+            renderTechBoard();
+        }
+
+        function openAddCustomerModal() {
+            document.getElementById("customerNameInput").value = "";
+            document.getElementById("addCustomerModal").style.display = "flex";
+            setTimeout(() => document.getElementById("customerNameInput").focus(), 0);
+        }
+
+        function closeAddCustomerModal() {
+            document.getElementById("addCustomerModal").style.display = "none";
+        }
+
+        function submitAddCustomerModal() {
+            const name = document.getElementById("customerNameInput").value.trim();
+            if (!name) {
+                alert("Please enter customer name.");
+                return;
+            }
+            waitingQueue.push({ id: nextCustomerId++, name, arrival: Date.now() });
+            saveQueueState();
+            closeAddCustomerModal();
+            autoAssign();
+            renderQueue();
+        }
+
+        function saveServiceRecord(record) {
+            const existing = JSON.parse(localStorage.getItem(serviceRecordsKey) || "[]");
+            existing.push(record);
+            localStorage.setItem(serviceRecordsKey, JSON.stringify(existing));
+        }
+
+        function saveQueueState() {
+            localStorage.setItem(queueStateKey, JSON.stringify({ techs, waitingQueue, nextCustomerId }));
+        }
+
+        function loadQueueState() {
+            const saved = JSON.parse(localStorage.getItem(queueStateKey) || "null");
+            if (!saved) return;
+            if (saved.techs && typeof saved.techs === "object") techs = saved.techs;
+            if (Array.isArray(saved.waitingQueue)) waitingQueue = saved.waitingQueue;
+            if (Number.isInteger(saved.nextCustomerId)) nextCustomerId = saved.nextCustomerId;
+        }
+
+        function initializeSharedTechConfig() {
+            const techNames = Object.keys(techs);
+            localStorage.setItem("nailTechNames", JSON.stringify(techNames));
+            const existingCreds = JSON.parse(localStorage.getItem("nailTechCredentials") || "{}");
+            techNames.forEach((name) => {
+                if (!existingCreds[name]) {
+                    existingCreds[name] = { identifier: `${name.toLowerCase()}@example.com`, password: "1234" };
+                }
+            });
+            localStorage.setItem("nailTechCredentials", JSON.stringify(existingCreds));
+        }
+
+        function loadBonusSettings() {
+            const saved = JSON.parse(localStorage.getItem(bonusSettingsKey) || "null");
+            if (saved && saved.start && saved.end) bonusSettings = saved;
+            const savedClockIns = JSON.parse(localStorage.getItem(bonusClockInsKey) || "{}");
+            if (savedClockIns && typeof savedClockIns === "object") bonusClockIns = savedClockIns;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+            else document.exitFullscreen();
+        }
+
+        function updateClock() {
+            const clock = document.getElementById("clock");
+            clock.textContent = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+        }
+
+        function init() {
+            loadQueueState();
+            loadBonusSettings();
+            initializeSharedTechConfig();
+            renderTechBoard();
+            renderQueue();
+            document.getElementById("customerNameInput").addEventListener("keydown", (event) => {
+                if (event.key === "Enter") submitAddCustomerModal();
+            });
+            setInterval(() => {
+                updateClock();
+                renderTechBoard();
+                renderQueue();
+            }, 1000);
+            updateClock();
+            console.log("%c✅ M. VINCÉ Nail Spa Queue System Ready with Tech Management", "color:#d4af77;font-size:18px");
+        }
+        window.onload = init;
+    </script>
+</body>
+</html>

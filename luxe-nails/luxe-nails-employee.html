@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>M. VINCÉ Nail Spa • Employee Portal</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Poppins:wght@400;500;600&display=swap');
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: #0f0c0a;
+            color: #f5f0e8;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: linear-gradient(90deg, #1a1208, #3d2a1f);
+            color: #d4af77;
+            text-align: center;
+            padding: 20px;
+            font-family: 'Playfair Display', serif;
+            font-size: 36px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .main {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(16px);
+            border-radius: 28px;
+            padding: 32px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            border: 1px solid rgba(212, 175, 119, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .welcome {
+            font-size: 28px;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 8px;
+            color: #d4af77;
+        }
+        
+        .tech-name {
+            font-size: 42px;
+            font-family: 'Playfair Display', serif;
+            font-weight: 700;
+            text-align: center;
+            color: #f5f0e8;
+            margin-bottom: 32px;
+        }
+        
+        .stat-card {
+            background: rgba(255,255,255,0.08);
+            border-radius: 20px;
+            padding: 32px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        
+        .total-number {
+            font-size: 72px;
+            font-weight: 700;
+            color: #d4af77;
+            line-height: 1;
+        }
+        
+        .daily-list {
+            margin-top: 12px;
+        }
+        
+        .day-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 16px;
+            margin-bottom: 12px;
+            font-size: 20px;
+        }
+        
+        .logout-btn {
+            margin-top: auto;
+            background: #c48b6f;
+            color: #1a1208;
+            font-size: 22px;
+            font-weight: 700;
+            padding: 20px;
+            border: none;
+            border-radius: 9999px;
+            cursor: pointer;
+            width: 100%;
+        }
+        
+        .big-input {
+            width: 100%;
+            padding: 24px;
+            font-size: 28px;
+            font-weight: 600;
+            border: none;
+            border-radius: 20px;
+            background: #1f1914;
+            color: #f5f0e8;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .login-button {
+            background: linear-gradient(90deg, #d4af77, #c48b6f);
+            color: #1a1208;
+            font-size: 28px;
+            font-weight: 700;
+            padding: 24px;
+            border: none;
+            border-radius: 9999px;
+            cursor: pointer;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.65);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- LOGIN SCREEN -->
+    <div id="loginScreen" class="main">
+        <div class="header">M. VINCÉ</div>
+        <div style="text-align:center; margin-bottom:32px;">
+            <h1 style="font-size:32px; color:#d4af77;">Employee Portal</h1>
+        </div>
+        
+        <input type="text" id="loginIdentifier" class="big-input" placeholder="Email or Phone Number" autofocus>
+        <input type="password" id="loginPassword" class="big-input" placeholder="Password">
+        
+        <button onclick="performEmployeeLogin()" class="login-button">LOG IN</button>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboardScreen" class="main" style="display:none;">
+        <div class="header">M. VINCÉ</div>
+        
+        <div class="welcome">Welcome back,</div>
+        <div class="tech-name" id="dashName"></div>
+        
+        <div class="stat-card">
+            <div style="font-size:18px; color:#d4af77;">THIS WEEK</div>
+            <div id="weekTotal" class="total-number">0</div>
+            <div style="color:#d4af77; font-size:22px;">Customers Served</div>
+        </div>
+        
+        <div class="stat-card">
+            <div style="font-size:18px; color:#d4af77;">ESTIMATED EARNINGS</div>
+            <div id="weekEarnings" class="total-number">$0.00</div>
+            <div style="color:#d4af77; font-size:22px;">(60% of services)</div>
+        </div>
+        
+        <div class="stat-card">
+            <div style="font-size:22px; color:#d4af77; margin-bottom:16px;">DAILY BREAKDOWN</div>
+            <div id="dailyList" class="daily-list"></div>
+        </div>
+        
+        <button onclick="logoutEmployee()" class="logout-btn">LOG OUT</button>
+    </div>
+
+    <div id="inviteSetupModal" class="modal">
+        <div style="width:100%;max-width:560px;background:#1f1914;border-radius:18px;padding:24px;">
+            <div style="color:#d4af77;font-size:28px;font-weight:700;margin-bottom:8px;">Set Up Employee Account</div>
+            <div id="inviteSetupLabel" style="margin-bottom:14px;color:#f5f0e8;"></div>
+            <input id="invitePasswordInput" type="password" class="big-input" placeholder="Create password (min 4 chars)" />
+            <button onclick="completeInviteSetup()" class="login-button" style="width:100%;">COMPLETE SETUP</button>
+        </div>
+    </div>
+
+    <script>
+        // ============== FULL M. VINCÉ SERVICE MENU ==============
+        const servicesMenu = [
+            {name: "Spa Manicure", price: 40},
+            {name: "Signature Manicure", price: 50},
+            {name: "Ultimate M.V. Spa Manicure", price: 65},
+            {name: "Spa Pedicure", price: 60},
+            {name: "Signature Pedicure", price: 70},
+            {name: "Full Set Acrylic", price: 55},
+            {name: "Fill", price: 40},
+            {name: "Gel Polish", price: 25},
+            {name: "Polish Change", price: 15},
+            {name: "Nail Art (per nail)", price: 5},
+            // Shape surcharges
+            {name: "Coffin / Stiletto Shape (+$5)", price: 5},
+            {name: "Almond / Ballerina Shape (+$5)", price: 5},
+            // Add-ons
+            {name: "Paraffin Treatment", price: 15},
+            {name: "Sugar Scrub", price: 10},
+            {name: "Collagen Gloves", price: 20},
+            {name: "Hot Stone Massage", price: 15}
+        ];
+
+        let currentTech = null;
+        let techs = {};
+        let pendingInviteId = null;
+        let pendingInviteTech = null;
+        let pendingInviteIdentifier = null;
+
+        function loadSharedData() {
+            const savedTechs = localStorage.getItem("nailTechNames");
+            if (savedTechs) {
+                const names = JSON.parse(savedTechs);
+                const creds = JSON.parse(localStorage.getItem("nailTechCredentials") || "{}");
+                techs = {};
+                names.forEach(name => techs[name] = creds[name] || {identifier:"", password:""});
+            }
+        }
+
+        function performEmployeeLogin() {
+            const id = document.getElementById("loginIdentifier").value.trim().toLowerCase();
+            const pass = document.getElementById("loginPassword").value;
+            if (!id || !pass) return alert("Please enter both fields");
+            
+            for (let name in techs) {
+                const t = techs[name];
+                if (t.identifier && t.identifier.toLowerCase() === id && t.password === pass) {
+                    currentTech = name;
+                    showDashboard();
+                    return;
+                }
+            }
+            alert("❌ Invalid credentials");
+        }
+
+        function showDashboard() {
+            document.getElementById("loginScreen").style.display = "none";
+            document.getElementById("dashboardScreen").style.display = "flex";
+            document.getElementById("dashName").textContent = currentTech;
+            renderWeeklyStats();
+        }
+
+        function logoutEmployee() {
+            currentTech = null;
+            document.getElementById("dashboardScreen").style.display = "none";
+            document.getElementById("loginScreen").style.display = "flex";
+        }
+
+        function renderWeeklyStats() {
+            if (!currentTech) return;
+
+            const records = getEmployeeWeekRecords(currentTech);
+            const totalCustomers = records.length;
+            const totalEarnings = records.reduce((sum, r) => sum + (r.employeeShare || 0), 0);
+
+            document.getElementById("weekTotal").textContent = String(totalCustomers);
+            document.getElementById("weekEarnings").textContent = `$${totalEarnings.toFixed(2)}`;
+            renderDailyBreakdown(records);
+        }
+
+        function getEmployeeWeekRecords(techName) {
+            const allRecords = JSON.parse(localStorage.getItem("mvServiceRecords") || "[]");
+            const now = new Date();
+            const start = new Date(now);
+            start.setHours(0, 0, 0, 0);
+            start.setDate(start.getDate() - 6);
+
+            return allRecords.filter((record) => {
+                if (!record || record.tech !== techName || !record.completedAt) return false;
+                const completed = new Date(record.completedAt);
+                return completed >= start && completed <= now;
+            });
+        }
+
+        function renderDailyBreakdown(records) {
+            const dailyList = document.getElementById("dailyList");
+            if (records.length === 0) {
+                dailyList.innerHTML = `<div style="text-align:center; color:#a58f6b; padding:8px 0;">No completed services this week yet.</div>`;
+                return;
+            }
+
+            const byDay = {};
+            records.forEach((record) => {
+                const key = new Date(record.completedAt).toLocaleDateString("en-US", { weekday: "short" });
+                if (!byDay[key]) byDay[key] = { customers: 0, earnings: 0 };
+                byDay[key].customers += 1;
+                byDay[key].earnings += record.employeeShare || 0;
+            });
+
+            const orderedWeekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            dailyList.innerHTML = orderedWeekdays
+                .filter((day) => byDay[day])
+                .map((day) => `
+                    <div class="day-row">
+                        <span class="day-name">${day} (${byDay[day].customers})</span>
+                        <span>$${byDay[day].earnings.toFixed(2)}</span>
+                    </div>
+                `)
+                .join("");
+        }
+
+        // Utility available for employee-side calculations based on selected menu items
+        function calculateMenuTotalByIndexes(indexes) {
+            return (indexes || []).reduce((sum, idx) => {
+                const item = servicesMenu[idx];
+                return sum + (item ? item.price : 0);
+            }, 0);
+        }
+
+        function init() {
+            loadSharedData();
+            maybeStartInviteSetup();
+        }
+
+        async function maybeStartInviteSetup() {
+            const params = new URLSearchParams(window.location.search);
+            const inviteId = params.get("invite");
+            if (!inviteId) return;
+
+            try {
+                const response = await fetch(`/api/invites/${encodeURIComponent(inviteId)}`);
+                const data = await response.json();
+                if (!response.ok) {
+                    alert(data.error || "Invite lookup failed.");
+                    return;
+                }
+                pendingInviteId = inviteId;
+                pendingInviteTech = data.techName;
+                pendingInviteIdentifier = data.identifier;
+                document.getElementById("inviteSetupLabel").textContent = `${pendingInviteTech} (${pendingInviteIdentifier})`;
+                document.getElementById("invitePasswordInput").value = "";
+                document.getElementById("inviteSetupModal").style.display = "flex";
+            } catch (error) {
+                alert("Could not load invite setup.");
+            }
+        }
+
+        async function completeInviteSetup() {
+            if (!pendingInviteId) return;
+            const password = document.getElementById("invitePasswordInput").value;
+            if (!password || password.length < 4) {
+                alert("Password must be at least 4 characters.");
+                return;
+            }
+            try {
+                const response = await fetch("/api/invites/accept", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ inviteId: pendingInviteId, password })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || "Setup failed");
+
+                const names = JSON.parse(localStorage.getItem("nailTechNames") || "[]");
+                if (!names.includes(data.techName)) names.push(data.techName);
+                localStorage.setItem("nailTechNames", JSON.stringify(names));
+
+                const creds = JSON.parse(localStorage.getItem("nailTechCredentials") || "{}");
+                creds[data.techName] = {
+                    identifier: data.identifier,
+                    password: data.password
+                };
+                localStorage.setItem("nailTechCredentials", JSON.stringify(creds));
+                loadSharedData();
+                document.getElementById("inviteSetupModal").style.display = "none";
+                alert("Account setup complete. You can now log in.");
+                const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+                window.history.replaceState({}, document.title, cleanUrl);
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+        
+        window.onload = init;
+    </script>
+</body>
+</html>
