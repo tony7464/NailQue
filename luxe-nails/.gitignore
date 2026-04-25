@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Runtime secrets/config
+.env
+
+# Runtime state
+manager_settings.json
+logs/
+
+# Build artifacts
+build/
+dist/
+dist-installers/
+installer-work/
+installer-inspect/
+qa-reports/
+*.spec
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -12,6 +12,7 @@
             font-family: 'Poppins', sans-serif;
             background: #0f0c0a;
             color: #f5f0e8;
+            cursor: url("/assets/cursors/windows11-black.cur"), auto;
             min-height: 100vh;
             padding: 20px;
             display: flex;
@@ -125,15 +126,47 @@
             border-radius: 9999px;
             cursor: pointer;
         }
+        .nav-back-btn {
+            margin-top: 12px;
+            background: transparent;
+            color: #d4af77;
+            font-size: 18px;
+            font-weight: 600;
+            padding: 14px;
+            border: 2px solid #d4af77;
+            border-radius: 9999px;
+            cursor: pointer;
+            width: 100%;
+        }
 
-        .modal {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.65);
-            display: none;
+        .helper-row {
+            display: flex;
+            justify-content: space-between;
             align-items: center;
-            justify-content: center;
-            padding: 20px;
+            color: #a58f6b;
+            font-size: 14px;
+            margin-top: -10px;
+            margin-bottom: 16px;
+        }
+
+        .toast {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            min-width: 240px;
+            background: #2a221b;
+            border: 1px solid #d4af77;
+            color: #f5f0e8;
+            padding: 10px 12px;
+            border-radius: 10px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+            display: none;
+            z-index: 9999;
+        }
+
+        .toast.error {
+            border-color: #ff9b9b;
+            color: #ffd9d9;
         }
     </style>
 </head>
@@ -145,10 +178,18 @@
             <h1 style="font-size:32px; color:#d4af77;">Employee Portal</h1>
         </div>
         
-        <input type="text" id="loginIdentifier" class="big-input" placeholder="Email or Phone Number" autofocus>
+        <input type="text" id="loginIdentifier" class="big-input" placeholder="Login ID" autofocus>
         <input type="password" id="loginPassword" class="big-input" placeholder="Password">
+        <div class="helper-row">
+            <label>
+                <input id="showLoginPassword" type="checkbox" style="margin-right:6px;vertical-align:middle;">
+                Show password
+            </label>
+            <span>Press Enter to log in</span>
+        </div>
         
         <button onclick="performEmployeeLogin()" class="login-button">LOG IN</button>
+        <button onclick="window.location.href='/'" class="nav-back-btn">BACK TO QUEUE</button>
     </div>
 
     <!-- DASHBOARD -->
@@ -176,16 +217,10 @@
         </div>
         
         <button onclick="logoutEmployee()" class="logout-btn">LOG OUT</button>
+        <button onclick="window.location.href='/'" class="nav-back-btn">BACK TO QUEUE</button>
     </div>
 
-    <div id="inviteSetupModal" class="modal">
-        <div style="width:100%;max-width:560px;background:#1f1914;border-radius:18px;padding:24px;">
-            <div style="color:#d4af77;font-size:28px;font-weight:700;margin-bottom:8px;">Set Up Employee Account</div>
-            <div id="inviteSetupLabel" style="margin-bottom:14px;color:#f5f0e8;"></div>
-            <input id="invitePasswordInput" type="password" class="big-input" placeholder="Create password (min 4 chars)" />
-            <button onclick="completeInviteSetup()" class="login-button" style="width:100%;">COMPLETE SETUP</button>
-        </div>
-    </div>
+    <div id="employeeToast" class="toast" role="status" aria-live="polite"></div>
 
     <script>
         // ============== FULL M. VINCÉ SERVICE MENU ==============
@@ -212,9 +247,11 @@
 
         let currentTech = null;
         let techs = {};
-        let pendingInviteId = null;
-        let pendingInviteTech = null;
-        let pendingInviteIdentifier = null;
+        let toastTimer = null;
+        const soundFx = {
+            startup: "/assets/sounds/startup_fx.mp3",
+            click: "/assets/sounds/click_fx.mp3",
+        };
 
         function loadSharedData() {
             const savedTechs = localStorage.getItem("nailTechNames");
@@ -229,17 +266,22 @@
         function performEmployeeLogin() {
             const id = document.getElementById("loginIdentifier").value.trim().toLowerCase();
             const pass = document.getElementById("loginPassword").value;
-            if (!id || !pass) return alert("Please enter both fields");
+            if (!id || !pass) {
+                showToast("Please enter both fields.", true);
+                return;
+            }
             
             for (let name in techs) {
                 const t = techs[name];
                 if (t.identifier && t.identifier.toLowerCase() === id && t.password === pass) {
                     currentTech = name;
+                    localStorage.setItem("employeeLastLoginId", id);
                     showDashboard();
+                    showToast(`Welcome, ${name}.`, false);
                     return;
                 }
             }
-            alert("❌ Invalid credentials");
+            showToast("Invalid credentials.", true);
         }
 
         function showDashboard() {
@@ -253,6 +295,9 @@
             currentTech = null;
             document.getElementById("dashboardScreen").style.display = "none";
             document.getElementById("loginScreen").style.display = "flex";
+            document.getElementById("loginPassword").value = "";
+            document.getElementById("loginIdentifier").focus();
+            showToast("Logged out.", false);
         }
 
         function renderWeeklyStats() {
@@ -318,66 +363,49 @@
 
         function init() {
             loadSharedData();
-            maybeStartInviteSetup();
+            const savedLoginId = localStorage.getItem("employeeLastLoginId");
+            if (savedLoginId) {
+                document.getElementById("loginIdentifier").value = savedLoginId;
+            }
+            document.getElementById("showLoginPassword").addEventListener("change", (event) => {
+                document.getElementById("loginPassword").type = event.target.checked ? "text" : "password";
+            });
+            document.getElementById("loginIdentifier").addEventListener("keydown", (event) => {
+                if (event.key === "Enter") performEmployeeLogin();
+            });
+            document.getElementById("loginPassword").addEventListener("keydown", (event) => {
+                if (event.key === "Enter") performEmployeeLogin();
+            });
+            setupSoundEffects();
+            setTimeout(() => playSoundEffect("startup"), 220);
         }
 
-        async function maybeStartInviteSetup() {
-            const params = new URLSearchParams(window.location.search);
-            const inviteId = params.get("invite");
-            if (!inviteId) return;
-
-            try {
-                const response = await fetch(`/api/invites/${encodeURIComponent(inviteId)}`);
-                const data = await response.json();
-                if (!response.ok) {
-                    alert(data.error || "Invite lookup failed.");
-                    return;
-                }
-                pendingInviteId = inviteId;
-                pendingInviteTech = data.techName;
-                pendingInviteIdentifier = data.identifier;
-                document.getElementById("inviteSetupLabel").textContent = `${pendingInviteTech} (${pendingInviteIdentifier})`;
-                document.getElementById("invitePasswordInput").value = "";
-                document.getElementById("inviteSetupModal").style.display = "flex";
-            } catch (error) {
-                alert("Could not load invite setup.");
-            }
+        function showToast(message, isError) {
+            const toast = document.getElementById("employeeToast");
+            toast.textContent = message;
+            toast.classList.toggle("error", !!isError);
+            toast.style.display = "block";
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                toast.style.display = "none";
+            }, 2500);
         }
 
-        async function completeInviteSetup() {
-            if (!pendingInviteId) return;
-            const password = document.getElementById("invitePasswordInput").value;
-            if (!password || password.length < 4) {
-                alert("Password must be at least 4 characters.");
-                return;
-            }
-            try {
-                const response = await fetch("/api/invites/accept", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ inviteId: pendingInviteId, password })
-                });
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.error || "Setup failed");
+        function playSoundEffect(kind) {
+            const src = soundFx[kind];
+            if (!src) return;
+            const audio = new Audio(src);
+            audio.preload = "auto";
+            audio.volume = 0.6;
+            audio.play().catch(() => {});
+        }
 
-                const names = JSON.parse(localStorage.getItem("nailTechNames") || "[]");
-                if (!names.includes(data.techName)) names.push(data.techName);
-                localStorage.setItem("nailTechNames", JSON.stringify(names));
-
-                const creds = JSON.parse(localStorage.getItem("nailTechCredentials") || "{}");
-                creds[data.techName] = {
-                    identifier: data.identifier,
-                    password: data.password
-                };
-                localStorage.setItem("nailTechCredentials", JSON.stringify(creds));
-                loadSharedData();
-                document.getElementById("inviteSetupModal").style.display = "none";
-                alert("Account setup complete. You can now log in.");
-                const cleanUrl = `${window.location.origin}${window.location.pathname}`;
-                window.history.replaceState({}, document.title, cleanUrl);
-            } catch (error) {
-                alert(error.message);
-            }
+        function setupSoundEffects() {
+            document.addEventListener("click", (event) => {
+                const clickable = event.target.closest("button, [role='button'], .login-button, .logout-btn, .nav-back-btn");
+                if (!clickable) return;
+                playSoundEffect("click");
+            }, true);
         }
         
         window.onload = init;

@@ -8,14 +8,31 @@
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Poppins:wght@400;500;600&display=swap');
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-main: #0f0c0a;
+            --text-main: #f5f0e8;
+            --panel-bg: rgba(255,255,255,0.06);
+            --panel-soft: rgba(255,255,255,0.08);
+            --accent: #d4af77;
+            --footer-bg: #1a1208;
+        }
         body {
             font-family: 'Poppins', sans-serif;
-            background: #0f0c0a;
-            color: #f5f0e8;
+            background: var(--bg-main);
+            color: var(--text-main);
+            cursor: url("/assets/cursors/windows11-black.cur"), auto;
             overflow: hidden;
             height: 100vh;
             display: flex;
             flex-direction: column;
+        }
+        body.light-theme {
+            --bg-main: #f5efe6;
+            --text-main: #2a221b;
+            --panel-bg: rgba(42,34,27,0.08);
+            --panel-soft: rgba(42,34,27,0.12);
+            --accent: #8e6a35;
+            --footer-bg: #e8dbc8;
         }
 
         .header {
@@ -39,22 +56,29 @@
 
         .main { flex: 1; display: flex; gap: 24px; padding: 24px; overflow: hidden; }
 
-        .tech-board { flex: 2; background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); border-radius: 24px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
+        .tech-board { flex: 2; background: var(--panel-bg); backdrop-filter: blur(12px); border-radius: 24px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
 
         .tech-panel {
-            background: rgba(255,255,255,0.08);
+            background: var(--panel-soft);
             border-radius: 20px;
             padding: 24px;
             display: flex;
             align-items: center;
             gap: 28px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+        }
+
+        .tech-panel:hover {
+            transform: translateY(-2px);
+            background: rgba(255,255,255,0.11);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.25);
         }
 
         .tech-name {
             font-size: 44px;
             font-family: 'Playfair Display', serif;
             font-weight: 700;
-            color: #d4af77;
+            color: var(--accent);
             min-width: 240px;
         }
 
@@ -64,9 +88,11 @@
         .offline { background: #4a3f35; color: #d4af77; }
 
         .buttons { display: flex; gap: 12px; }
-        .btn { font-size: 20px; font-weight: 600; padding: 14px 24px; border: none; border-radius: 9999px; cursor: pointer; }
+        .btn { font-size: 20px; font-weight: 600; padding: 14px 24px; border: none; border-radius: 9999px; cursor: pointer; transition: transform 0.16s ease, filter 0.16s ease, box-shadow 0.16s ease; }
+        .btn:hover { filter: brightness(1.06); box-shadow: 0 6px 16px rgba(0,0,0,0.24); }
+        .btn:active { transform: translateY(1px) scale(0.99); filter: brightness(0.98); }
 
-        .queue-panel { flex: 1; background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); border-radius: 24px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); display: flex; flex-direction: column; }
+        .queue-panel { flex: 1; background: var(--panel-bg); backdrop-filter: blur(12px); border-radius: 24px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); display: flex; flex-direction: column; }
 
         .queue-header { font-size: 34px; font-weight: 700; color: #d4af77; margin-bottom: 18px; }
 
@@ -85,6 +111,18 @@
             justify-content: space-between;
             align-items: center;
             gap: 10px;
+        }
+        .appt-badge {
+            display: inline-block;
+            margin-left: 8px;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            background: #6b4ca5;
+            color: #f5f0e8;
+            vertical-align: middle;
         }
 
         .add-btn {
@@ -106,6 +144,7 @@
             align-items: center;
             justify-content: center;
             padding: 20px;
+            animation: modalFadeIn 0.18s ease;
         }
 
         .field-label {
@@ -149,8 +188,161 @@
             gap: 10px;
             align-items: center;
         }
+        .footer {
+            background: var(--footer-bg);
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+        }
+        .footer-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+        .clock {
+            color: var(--accent);
+            font-size: 28px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .toggle-small {
+            color: #a58f6b;
+            font-size: 14px;
+            cursor: pointer;
+            user-select: none;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .btn-small {
+            font-size: 14px;
+            font-weight: 600;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.14s ease, filter 0.14s ease;
+        }
+        .btn-small:hover { filter: brightness(1.08); }
+        .btn-small:active { transform: translateY(1px); }
 
         .scheduled { background: #6b4ca5; color: #f5f0e8; }
+        .on-break { background: #7a5a3a; color: #f5f0e8; }
+
+        .toast {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            min-width: 260px;
+            max-width: 420px;
+            background: #2a221b;
+            border: 1px solid #d4af77;
+            color: #f5f0e8;
+            padding: 12px 14px;
+            border-radius: 12px;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.45);
+            z-index: 9999;
+            display: none;
+            font-size: 14px;
+            line-height: 1.4;
+            animation: toastIn 0.18s ease;
+        }
+
+        .toast.error {
+            border-color: #ff9b9b;
+            color: #ffd9d9;
+        }
+
+        .activity-log {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(212,175,119,0.18);
+            border-radius: 14px;
+            padding: 12px;
+            margin-top: 10px;
+        }
+
+        .activity-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(212,175,119,0.12);
+            font-size: 13px;
+        }
+
+        .activity-row:last-child { border-bottom: none; }
+        .activity-time { color: #a58f6b; white-space: nowrap; }
+        .bonus-star { color: #ffd166; margin-right: 8px; font-size: 26px; vertical-align: middle; }
+        .summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 8px; }
+        .summary-card { background: var(--panel-soft); border-radius: 12px; padding: 10px; }
+        .summary-label { font-size: 12px; color: #a58f6b; }
+        .summary-value { font-size: 22px; font-weight: 700; color: var(--accent); }
+        .nav-pill-btn {
+            background: none;
+            border: 2px solid #d4af77;
+            color: #d4af77;
+            font-size: 15px;
+            font-weight: 600;
+            padding: 9px 15px;
+            border-radius: 9999px;
+            cursor: pointer;
+        }
+        .service-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 10px;
+            border-bottom: 1px solid #3d2a1f;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.14s ease;
+        }
+        .service-row:hover {
+            background: rgba(255,255,255,0.04);
+        }
+        .service-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .service-price {
+            color: #d4af77;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 1600px) {
+            .main { gap: 16px; padding: 16px; }
+            .tech-name { font-size: 36px; min-width: 180px; }
+            .status { font-size: 24px; min-width: 180px; padding: 10px 22px; }
+            .btn { font-size: 16px; padding: 10px 16px; }
+            .buttons { gap: 8px; flex-wrap: wrap; }
+            .add-btn { font-size: 18px; padding: 14px 28px; }
+            .clock { font-size: 22px; }
+            .nav-pill-btn { font-size: 13px; padding: 7px 12px; }
+        }
+
+        @media (max-width: 1300px) {
+            .footer { flex-wrap: wrap; justify-content: center; }
+            .footer-controls { justify-content: center; }
+        }
+
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: scale(0.985); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
@@ -158,15 +350,17 @@
     <div class="main">
         <div class="tech-board" id="techBoard"></div>
         <div class="queue-panel">
-            <div class="queue-header">WAITING CUSTOMERS</div>
+            <div class="queue-header" id="queueHeaderText">WAITING CUSTOMERS</div>
             <div class="queue-list" id="queueList"></div>
         </div>
     </div>
-    <div class="footer" style="background:#1a1208; padding:18px 30px; display:flex; justify-content:space-between; align-items:center;">
+    <div class="footer">
         <button class="add-btn" onclick="openAddCustomerModal()">+ ADD NEW CUSTOMER</button>
-        <div id="clock" style="color:#d4af77;font-size:28px;font-weight:600;"></div>
-        <div class="row">
-            <button onclick="openManagerAccess()" style="background:none;border:2px solid #d4af77;color:#d4af77;font-size:16px;padding:8px 14px;border-radius:9999px;cursor:pointer">TECH MANAGEMENT</button>
+        <div id="clock" class="clock"></div>
+        <div class="footer-controls">
+            <button class="nav-pill-btn" onclick="window.location.href='/employee'">EMPLOYEE PORTAL</button>
+            <button class="nav-pill-btn" onclick="toggleTheme()">THEME</button>
+            <button class="nav-pill-btn" onclick="openManagerAccess()">TECH MANAGEMENT</button>
             <button onclick="toggleFullscreen()" style="background:none;border:none;color:#d4af77;font-size:22px;cursor:pointer">⛶ FULLSCREEN</button>
         </div>
     </div>
@@ -177,6 +371,18 @@
             <div class="modal-title" style="color:#d4af77; font-size:28px; font-weight:700; margin-bottom:16px;">ADD NEW CUSTOMER</div>
             <label class="field-label" for="customerNameInput">Customer Name</label>
             <input id="customerNameInput" class="text-input" type="text" placeholder="Enter customer name" />
+            <label class="toggle-small" style="margin-top:-2px;">
+                <input type="checkbox" id="isAppointmentInput" onchange="toggleAppointmentFields()" style="margin-right:8px;vertical-align:middle;" />
+                Appointment
+            </label>
+            <div id="appointmentFields" style="display:none;">
+                <label class="field-label" for="appointmentTimeInput">Appointment Time</label>
+                <input id="appointmentTimeInput" class="text-input" type="time" />
+            </div>
+            <label class="field-label" for="requestedTechInput">Requested Nail Tech (Optional)</label>
+            <select id="requestedTechInput" class="select-input">
+                <option value="">No preference (next available)</option>
+            </select>
 
             <button onclick="submitAddCustomerModal()" style="width:100%;background:#d4af77;color:#1a1208;font-size:22px;font-weight:700;padding:16px;border:none;border-radius:9999px;cursor:pointer;margin-top:8px;margin-bottom:10px;">
                 ADD TO QUEUE
@@ -219,14 +425,15 @@
         <div class="modal-content" style="max-width:760px; width:100%; background:#1f1914; border-radius:18px; padding:24px; max-height:90vh; overflow-y:auto;">
             <div class="modal-title" style="color:#d4af77; font-size:28px; font-weight:700;">NAIL TECH MANAGEMENT</div>
 
-            <div class="section-title">Invite Nail Tech</div>
-            <input id="inviteTechName" class="text-input" type="text" placeholder="Tech name (e.g., Mia)" />
-            <input id="inviteContact" class="text-input" type="text" placeholder="Email or phone number" />
-            <select id="inviteChannel" class="select-input">
-                <option value="email">Email</option>
-                <option value="sms">Text Message</option>
-            </select>
-            <button onclick="sendTechInvite()" style="width:100%;background:#d4af77;color:#1a1208;font-size:18px;font-weight:700;padding:12px;border:none;border-radius:9999px;cursor:pointer;">SEND INVITE</button>
+            <div class="section-title">Create Nail Tech Account</div>
+            <input id="newTechName" class="text-input" type="text" placeholder="Tech name (e.g., Mia)" />
+            <input id="newTechIdentifier" class="text-input" type="text" placeholder="Login ID (set by manager)" />
+            <input id="newTechPassword" class="text-input" type="password" placeholder="Temporary password (min 4 chars)" />
+            <label class="toggle-small">
+                <input type="checkbox" id="newTechPasswordShow" onchange="toggleNewTechPasswordVisible()" style="margin-right:8px;vertical-align:middle;" />
+                Show password
+            </label>
+            <button onclick="createTechAccount()" style="width:100%;background:#d4af77;color:#1a1208;font-size:18px;font-weight:700;padding:12px;border:none;border-radius:9999px;cursor:pointer;">CREATE ACCOUNT</button>
 
             <div class="section-title">Bonus Round Window</div>
             <div class="row">
@@ -249,11 +456,45 @@
             <input id="newManagerPinInput" class="text-input" type="password" placeholder="New PIN (min 4 digits)" />
             <button onclick="changeManagerPin()" style="width:100%;background:#8f6bc4;color:#fff;font-size:16px;font-weight:700;padding:10px;border:none;border-radius:9999px;cursor:pointer;">UPDATE MANAGER PIN</button>
 
+            <div class="section-title">App Updates</div>
+            <div class="row" style="justify-content:flex-end;margin-bottom:8px;">
+                <button type="button" class="btn-small" style="background:#2d4f75;color:#f5f0e8;" onclick="checkForUpdatesNow()">CHECK NOW</button>
+                <button type="button" class="btn-small" style="background:#2d5b4a;color:#f5f0e8;" onclick="installLatestUpdate()">INSTALL UPDATE</button>
+            </div>
+            <div class="activity-log" style="margin-top:0;">
+                <div id="updateStatusPanel" style="color:#a58f6b;font-size:13px;">Checking update status...</div>
+            </div>
+
+            <div class="section-title">Manager Activity</div>
+            <div class="row" style="justify-content:flex-end;margin-bottom:8px;">
+                <button type="button" class="btn-small" style="background:#8e6a35;color:#fff;" onclick="undoLastTechRemoval()">UNDO REMOVE</button>
+                <button type="button" class="btn-small" style="background:#2d5b4a;color:#f5f0e8;" onclick="exportSalonData()">EXPORT DATA</button>
+                <button type="button" class="btn-small" style="background:#2d4f75;color:#f5f0e8;" onclick="triggerImportSalonData()">IMPORT DATA</button>
+                <button type="button" class="btn-small" style="background:#3d2a1f;color:#d4af77;" onclick="copyManagerActivityLog()">COPY LOG</button>
+                <button type="button" class="btn-small" style="background:#6b3030;color:#f5f0e8;" onclick="clearManagerActivityLog()">CLEAR LOG</button>
+            </div>
+            <div class="activity-log">
+                <div id="managerActivityLog"></div>
+            </div>
+
             <div id="managerMessage" style="margin-top:10px;color:#d4af77;font-size:14px;"></div>
 
             <button onclick="closeManagerModal()" style="width:100%;margin-top:14px;background:transparent;color:#d4af77;border:2px solid #d4af77;padding:14px;border-radius:9999px;cursor:pointer;">CLOSE</button>
         </div>
     </div>
+
+    <!-- REMOVE TECH CONFIRMATION -->
+    <div class="modal" id="removeTechConfirmModal" style="display:none;">
+        <div class="modal-content" style="max-width:480px; width:100%; background:#1f1914; border-radius:18px; padding:24px;">
+            <div class="modal-title" style="color:#d4af77; font-size:24px; font-weight:700; margin-bottom:12px;">Remove nail tech?</div>
+            <p id="removeTechConfirmText" style="color:#f5f0e8; font-size:16px; line-height:1.5; margin-bottom:20px;"></p>
+            <button type="button" onclick="confirmRemoveTechAccount()" style="width:100%;background:#6b3030;color:#f5f0e8;font-size:18px;font-weight:700;padding:14px;border:none;border-radius:9999px;cursor:pointer;margin-bottom:10px;">YES, REMOVE</button>
+            <button type="button" onclick="cancelRemoveTechConfirm()" style="width:100%;background:transparent;color:#d4af77;border:2px solid #d4af77;padding:14px;border-radius:9999px;cursor:pointer;">CANCEL</button>
+        </div>
+    </div>
+
+    <div id="actionToast" class="toast" role="status" aria-live="polite"></div>
+    <input id="importSalonDataInput" type="file" accept="application/json" style="display:none;" />
 
     <script>
         const servicesMenu = [
@@ -289,9 +530,62 @@
         const bonusSettingsKey = "mvBonusSettings";
         const bonusClockInsKey = "mvBonusClockIns";
         const managerSessionKey = "mvManagerSession";
+        const managerActivityLogKey = "mvManagerActivityLog";
+        const queueThemeKey = "mvQueueTheme";
 
         let bonusSettings = { start: "08:00", end: "09:30" };
         let bonusClockIns = {};
+        let pendingRemoveTechName = null;
+        let toastTimeoutId = null;
+        let managerActivityLog = [];
+        let lastRemovedTechSnapshot = null;
+        let bonusCycleQueue = [];
+        let bonusCycleServed = [];
+        let latestUpdateStatus = null;
+        const soundFx = {
+            startup: "/assets/sounds/startup_fx.mp3",
+            click: "/assets/sounds/click_fx.mp3",
+        };
+        const soundPlayers = {};
+
+        function normalizeIdentifier(value) {
+            return String(value || "").trim().toLowerCase();
+        }
+
+        function playSoundEffect(kind) {
+            const src = soundFx[kind];
+            if (!src) return;
+            const player = soundPlayers[kind] || new Audio(src);
+            if (!soundPlayers[kind]) {
+                player.preload = "auto";
+                soundPlayers[kind] = player;
+            }
+            player.volume = 0.6;
+            player.currentTime = 0;
+            player.play().catch(() => {});
+        }
+
+        function setupSoundEffects() {
+            Object.keys(soundFx).forEach((kind) => {
+                const player = new Audio(soundFx[kind]);
+                player.preload = "auto";
+                soundPlayers[kind] = player;
+            });
+
+            document.addEventListener("click", (event) => {
+                const clickable = event.target.closest("button, [role='button'], .btn, .btn-small, .add-btn, .nav-pill-btn");
+                if (!clickable) return;
+                playSoundEffect("click");
+            }, true);
+        }
+
+        function getCredentialsMap() {
+            return JSON.parse(localStorage.getItem("nailTechCredentials") || "{}");
+        }
+
+        function saveCredentialsMap(creds) {
+            localStorage.setItem("nailTechCredentials", JSON.stringify(creds));
+        }
 
         function nowMinutes() {
             const d = new Date();
@@ -322,10 +616,41 @@
                 .map(([name]) => name);
         }
 
+        function syncBonusCycleQueue() {
+            if (!isInBonusWindow()) {
+                bonusCycleQueue = [];
+                bonusCycleServed = [];
+                return;
+            }
+            const eligible = Object.entries(bonusClockIns)
+                .filter(([name]) => techs[name] && techs[name].status === "Available")
+                .sort((a, b) => a[1] - b[1])
+                .map(([name]) => name);
+
+            // Keep only still-eligible names in current queue.
+            bonusCycleQueue = bonusCycleQueue.filter((name) => eligible.includes(name));
+            bonusCycleServed = bonusCycleServed.filter((name) => techs[name]);
+
+            // Add newly eligible names that have not had their bonus turn yet this cycle.
+            eligible.forEach((name) => {
+                if (!bonusCycleQueue.includes(name) && !bonusCycleServed.includes(name)) {
+                    bonusCycleQueue.push(name);
+                }
+            });
+        }
+
+        function markBonusTurnUsed(techName) {
+            if (!isInBonusWindow()) return;
+            bonusCycleQueue = bonusCycleQueue.filter((name) => name !== techName);
+            if (!bonusCycleServed.includes(techName)) {
+                bonusCycleServed.push(techName);
+            }
+        }
+
         function getNextAvailableTechForAssignment() {
-            rebuildBonusOrder();
-            if (bonusOrder.length > 0) {
-                return bonusOrder.shift();
+            syncBonusCycleQueue();
+            if (bonusCycleQueue.length > 0) {
+                return bonusCycleQueue[0];
             }
             const available = Object.keys(techs)
                 .filter((name) => techs[name].status === "Available")
@@ -337,26 +662,123 @@
             return available[0] || null;
         }
 
+        function getBonusOrderPreview() {
+            syncBonusCycleQueue();
+            return bonusCycleQueue.slice();
+        }
+
+        function getTechDisplayOrder() {
+            const availablePriority = [];
+            const busy = [];
+            const scheduled = [];
+            const offline = [];
+
+            const bonusPending = getBonusOrderPreview();
+            const availableAll = Object.keys(techs)
+                .filter((name) => techs[name].status === "Available")
+                .sort((a, b) => {
+                    const aTime = bonusClockIns[a] || Number.MAX_SAFE_INTEGER;
+                    const bTime = bonusClockIns[b] || Number.MAX_SAFE_INTEGER;
+                    return aTime - bTime;
+                });
+
+            bonusPending.forEach((name) => {
+                if (techs[name] && techs[name].status === "Available") availablePriority.push(name);
+            });
+            availableAll.forEach((name) => {
+                if (!availablePriority.includes(name)) availablePriority.push(name);
+            });
+
+            Object.keys(techs).forEach((name) => {
+                const status = techs[name].status;
+                if (status === "Busy") busy.push(name);
+                else if (status === "Scheduled Appointment") scheduled.push(name);
+                else if (status === "Offline") offline.push(name);
+            });
+
+            busy.sort((a, b) => (techs[a].startTime || Number.MAX_SAFE_INTEGER) - (techs[b].startTime || Number.MAX_SAFE_INTEGER));
+            return [...availablePriority, ...busy, ...scheduled, ...offline];
+        }
+
+        function getQueueAnalytics() {
+            const records = JSON.parse(localStorage.getItem(serviceRecordsKey) || "[]");
+            const today = new Date();
+            const dayKey = today.toDateString();
+            const todays = records.filter((r) => new Date(r.completedAt).toDateString() === dayKey);
+            return {
+                waiting: waitingQueue.length,
+                completedToday: todays.length
+            };
+        }
+
+        function formatAppointmentLabel(timestampMs) {
+            if (!timestampMs) return "";
+            return new Date(timestampMs).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+        }
+
+        function getAvailableTechPriorityList() {
+            syncBonusCycleQueue();
+            const ordered = [];
+            bonusCycleQueue.forEach((name) => {
+                if (techs[name] && techs[name].status === "Available" && !ordered.includes(name)) {
+                    ordered.push(name);
+                }
+            });
+            Object.keys(techs)
+                .filter((name) => techs[name].status === "Available" && !ordered.includes(name))
+                .sort((a, b) => {
+                    const aTime = bonusClockIns[a] || Number.MAX_SAFE_INTEGER;
+                    const bTime = bonusClockIns[b] || Number.MAX_SAFE_INTEGER;
+                    return aTime - bTime;
+                })
+                .forEach((name) => ordered.push(name));
+            return ordered;
+        }
+
+        function findAssignableCustomerIndex(techName) {
+            const now = Date.now();
+            return waitingQueue.findIndex((customer) => {
+                const appointmentReady = !customer.appointmentTime || customer.appointmentTime <= now;
+                const matchesRequestedTech = !customer.requestedTech || customer.requestedTech === techName;
+                return appointmentReady && matchesRequestedTech;
+            });
+        }
+
         function autoAssign() {
-            const availableTech = getNextAvailableTechForAssignment();
-            if (!availableTech || waitingQueue.length === 0) {
+            if (waitingQueue.length === 0) {
                 renderQueue();
                 renderTechBoard();
                 return;
             }
-
-            const customer = waitingQueue.shift();
-            techs[availableTech].status = "Busy";
-            techs[availableTech].current = customer.name;
-            techs[availableTech].startTime = Date.now();
+            let assignedAtLeastOne = false;
+            let availableTechs = getAvailableTechPriorityList();
+            while (waitingQueue.length > 0 && availableTechs.length > 0) {
+                let assignmentMadeThisPass = false;
+                for (const availableTech of availableTechs) {
+                    const customerIndex = findAssignableCustomerIndex(availableTech);
+                    if (customerIndex === -1) continue;
+                    const customer = waitingQueue.splice(customerIndex, 1)[0];
+                    techs[availableTech].status = "Busy";
+                    techs[availableTech].current = customer.name;
+                    techs[availableTech].startTime = Date.now();
+                    markBonusTurnUsed(availableTech);
+                    assignmentMadeThisPass = true;
+                    assignedAtLeastOne = true;
+                    break;
+                }
+                if (!assignmentMadeThisPass) break;
+                availableTechs = getAvailableTechPriorityList();
+            }
             saveQueueState();
             renderQueue();
             renderTechBoard();
-            autoAssign();
+            if (!assignedAtLeastOne) return;
         }
 
         function renderQueue() {
             const queue = document.getElementById("queueList");
+            const header = document.getElementById("queueHeaderText");
+            header.textContent = `WAITING CUSTOMERS (${waitingQueue.length})`;
             if (waitingQueue.length === 0) {
                 queue.innerHTML = `<div style="color:#a58f6b; text-align:center; padding:14px;">No customers waiting</div>`;
                 return;
@@ -365,9 +787,13 @@
             queue.innerHTML = waitingQueue
                 .map((customer, idx) => {
                     const waitMins = Math.max(0, Math.round((Date.now() - customer.arrival) / 60000));
+                    const appointmentText = customer.appointmentTime ? ` • ${formatAppointmentLabel(customer.appointmentTime)}` : "";
+                    const requestedTechText = customer.requestedTech ? ` • Request: ${escapeHtml(customer.requestedTech)}` : "";
+                    const detailText = `${appointmentText}${requestedTechText}`;
+                    const appointmentBadge = customer.appointmentTime ? `<span class="appt-badge">APPT</span>` : "";
                     return `
                     <div class="queue-item">
-                        <div><strong>#${idx + 1}</strong> ${customer.name}</div>
+                        <div><strong>#${idx + 1}</strong> ${customer.name}${appointmentBadge}${detailText ? `<div style="font-size:12px;color:#a58f6b;margin-top:4px;">${detailText}</div>` : ""}</div>
                         <div style="color:#d4af77;">${waitMins} min</div>
                     </div>`;
                 })
@@ -377,6 +803,9 @@
         function statusBadgeForTech(tech) {
             if (tech.status === "Scheduled Appointment") {
                 return `<div class="status scheduled">SCHEDULED APPOINTMENT</div>`;
+            }
+            if (tech.status === "On Break") {
+                return `<div class="status on-break">ON BREAK</div>`;
             }
             if (tech.status === "Available") return `<div class="status available">AVAILABLE</div>`;
             if (tech.status === "Busy") {
@@ -388,16 +817,30 @@
 
         function renderTechBoard() {
             const board = document.getElementById("techBoard");
-            board.innerHTML = `<div style="font-size:26px; color:#d4af77; margin-bottom:12px; text-align:center;">LIVE TECH STATUS</div>`;
-            Object.keys(techs).forEach((name) => {
+            const metrics = getQueueAnalytics();
+            const bonusPreview = getBonusOrderPreview();
+            board.innerHTML = `
+                <div style="font-size:26px; color:#d4af77; margin-bottom:6px; text-align:center;">LIVE TECH STATUS</div>
+                <div style="text-align:center; color:#a58f6b; font-size:13px; margin-bottom:8px;">★ Bonus turn pending</div>
+                <div class="summary-grid">
+                    <div class="summary-card"><div class="summary-label">Waiting</div><div class="summary-value">${metrics.waiting}</div></div>
+                    <div class="summary-card"><div class="summary-label">Completed Today</div><div class="summary-value">${metrics.completedToday}</div></div>
+                </div>
+            `;
+            const orderedNames = getTechDisplayOrder();
+            orderedNames.forEach((name) => {
                 const t = techs[name];
+                const hasBonusTurn = bonusPreview.includes(name);
                 board.innerHTML += `
                 <div class="tech-panel">
-                    <div><div class="tech-name">${name}</div></div>
+                    <div><div class="tech-name">${hasBonusTurn ? '<span class="bonus-star">★</span>' : ""}${name}</div></div>
                     ${statusBadgeForTech(t)}
                     <div class="buttons">
                         <button class="btn" onclick="signInTech('${name}')" style="background:#d4af77;color:#1a1208;">READY</button>
-                        <button class="btn" onclick="finishTech('${name}')" style="background:#c48b6f;color:#fff;">FINISH</button>
+                        <button class="btn" onclick="unreadyTech('${name}')" style="background:#4a3f35;color:#f5f0e8;">UNREADY</button>
+                        <button class="btn" onclick="toggleTechBreak('${name}')" style="background:#7a5a3a;color:#f5f0e8;">${t.status === "On Break" ? "END BREAK" : "BREAK"}</button>
+                        <button class="btn" onclick="skipNextForTech('${name}')" style="background:#3f566f;color:#f5f0e8;">SKIP NEXT</button>
+                        <button class="btn" onclick="finishTech('${name}')" style="background:#c48b6f;color:#fff;">FINISH CUSTOMER</button>
                     </div>
                 </div>`;
             });
@@ -410,22 +853,284 @@
                 el.innerHTML = `<div style="color:#a58f6b;">No techs found.</div>`;
                 return;
             }
-            el.innerHTML = names.map((name) => `
-                <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;background:#2a221b;padding:10px;border-radius:12px;">
-                    <div style="flex:1;color:#f5f0e8;font-weight:600;">${name}</div>
-                    <select class="select-input" style="margin-bottom:0;max-width:220px;" onchange="setTechStatusOverride('${name}', this.value)">
-                        <option value="Offline" ${techs[name].status === "Offline" ? "selected" : ""}>Offline</option>
-                        <option value="Available" ${techs[name].status === "Available" ? "selected" : ""}>Available</option>
-                        <option value="Scheduled Appointment" ${techs[name].status === "Scheduled Appointment" ? "selected" : ""}>Scheduled Appointment</option>
-                    </select>
-                </div>
-            `).join("");
+            el.innerHTML = names.map((name) => {
+                const encodedName = encodeURIComponent(name);
+                return `
+                <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px;background:#2a221b;padding:10px;border-radius:12px;">
+                    <div style="flex:1;min-width:100px;color:#f5f0e8;font-weight:600;">${escapeHtml(name)}</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                        <select class="select-input tech-status-select" data-tech="${encodedName}" style="margin-bottom:0;max-width:200px;">
+                            <option value="Offline" ${techs[name].status === "Offline" ? "selected" : ""}>Offline</option>
+                            <option value="Available" ${techs[name].status === "Available" ? "selected" : ""}>Available</option>
+                            <option value="Scheduled Appointment" ${techs[name].status === "Scheduled Appointment" ? "selected" : ""}>Scheduled Appointment</option>
+                        </select>
+                        <button type="button" class="btn-small tech-reset-btn" data-tech="${encodedName}" style="background:#3d2a1f;color:#d4af77;">Reset password</button>
+                        <button type="button" class="btn-small tech-remove-btn" data-tech="${encodedName}" style="background:#6b3030;color:#f5f0e8;">Remove</button>
+                    </div>
+                </div>`;
+            }).join("");
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function getTechNameFromDataset(element) {
+            if (!element || !element.dataset || !element.dataset.tech) return "";
+            try {
+                return decodeURIComponent(element.dataset.tech);
+            } catch (error) {
+                return "";
+            }
+        }
+
+        function onManagerTechListClick(event) {
+            const resetButton = event.target.closest(".tech-reset-btn");
+            if (resetButton) {
+                const techName = getTechNameFromDataset(resetButton);
+                if (techName) resetTechAccountPassword(techName);
+                return;
+            }
+            const removeButton = event.target.closest(".tech-remove-btn");
+            if (removeButton) {
+                const techName = getTechNameFromDataset(removeButton);
+                if (techName) openRemoveTechConfirm(techName);
+            }
+        }
+
+        function onManagerTechListChange(event) {
+            const select = event.target.closest(".tech-status-select");
+            if (!select) return;
+            const techName = getTechNameFromDataset(select);
+            if (techName) setTechStatusOverride(techName, select.value);
         }
 
         function showManagerMessage(msg, isError) {
             const el = document.getElementById("managerMessage");
             el.style.color = isError ? "#ff9b9b" : "#d4af77";
             el.textContent = msg;
+        }
+
+        function showActionToast(message, isError) {
+            const toast = document.getElementById("actionToast");
+            if (!toast) return;
+            toast.textContent = message;
+            toast.classList.toggle("error", !!isError);
+            toast.style.display = "block";
+            if (toastTimeoutId) {
+                clearTimeout(toastTimeoutId);
+            }
+            toastTimeoutId = setTimeout(() => {
+                toast.style.display = "none";
+            }, 2800);
+        }
+
+        function addManagerActivity(message, level) {
+            const entry = {
+                message,
+                level: level || "info",
+                timestamp: new Date().toISOString()
+            };
+            managerActivityLog.unshift(entry);
+            managerActivityLog = managerActivityLog.slice(0, 80);
+            localStorage.setItem(managerActivityLogKey, JSON.stringify(managerActivityLog));
+            renderManagerActivityLog();
+        }
+
+        function formatUpdateTimestamp(unixSeconds) {
+            if (!unixSeconds) return "Never";
+            return new Date(unixSeconds * 1000).toLocaleString();
+        }
+
+        function renderUpdateStatusPanel(status) {
+            const panel = document.getElementById("updateStatusPanel");
+            if (!panel) return;
+            if (!status) {
+                panel.innerHTML = `<div style="color:#a58f6b;">Update status unavailable.</div>`;
+                return;
+            }
+            const enabled = !!status.enabled;
+            const available = !!status.available;
+            const downloaded = !!status.downloaded_path;
+            const checking = !!status.checking;
+            const error = status.last_error ? escapeHtml(status.last_error) : "";
+            const latest = escapeHtml(status.latest_version || "unknown");
+            const current = escapeHtml(status.current_version || "unknown");
+            const repo = escapeHtml(status.repo || "not configured");
+            const downloadedPath = downloaded ? escapeHtml(status.downloaded_path) : "";
+            const checkedAt = formatUpdateTimestamp(status.last_checked);
+            panel.innerHTML = `
+                <div style="color:#f5f0e8;"><strong>Current:</strong> ${current}</div>
+                <div style="color:#f5f0e8;"><strong>Latest:</strong> ${latest}</div>
+                <div style="color:#a58f6b;"><strong>Repo:</strong> ${repo}</div>
+                <div style="color:${enabled ? "#d4af77" : "#ffb3b3"};"><strong>Updater:</strong> ${enabled ? "Enabled" : "Disabled"}</div>
+                <div style="color:${available ? "#d4af77" : "#a58f6b"};"><strong>Status:</strong> ${checking ? "Checking..." : (available ? "Update available" : "Up to date")}</div>
+                <div style="color:${downloaded ? "#d4af77" : "#a58f6b"};"><strong>Package:</strong> ${downloaded ? "Downloaded" : "Not downloaded yet"}</div>
+                ${downloaded ? `<div style="color:#a58f6b;font-size:12px;"><strong>Path:</strong> ${downloadedPath}</div>` : ""}
+                <div style="color:#a58f6b;font-size:12px;"><strong>Last check:</strong> ${escapeHtml(checkedAt)}</div>
+                ${error ? `<div style="color:#ffd9d9;font-size:12px;"><strong>Error:</strong> ${error}</div>` : ""}
+            `;
+        }
+
+        async function fetchUpdateStatus(showErrors) {
+            try {
+                const response = await fetch("/api/update/status");
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || "Could not load update status.");
+                }
+                latestUpdateStatus = data;
+                renderUpdateStatusPanel(data);
+                if (data.available && data.downloaded_path) {
+                    showActionToast(`Update ${data.latest_version} is ready to install.`, false);
+                }
+            } catch (error) {
+                if (showErrors) {
+                    showActionToast(error.message || "Update status request failed.", true);
+                }
+            }
+        }
+
+        async function checkForUpdatesNow() {
+            try {
+                const response = await fetch("/api/update/check", { method: "POST" });
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.error || "Could not start update check.");
+                }
+                showActionToast("Checking for updates...", false);
+                setTimeout(() => fetchUpdateStatus(false), 1200);
+            } catch (error) {
+                showActionToast(error.message || "Update check failed.", true);
+            }
+        }
+
+        async function installLatestUpdate() {
+            try {
+                const proceed = confirm("Install latest downloaded update now? macOS may ask for admin password.");
+                if (!proceed) return;
+                const response = await fetch("/api/update/install", { method: "POST" });
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.error || "Install failed.");
+                }
+                showActionToast(data.message || "Update installed.", false);
+                addManagerActivity(`Installed app update ${latestUpdateStatus && latestUpdateStatus.latest_version ? latestUpdateStatus.latest_version : ""}.`, "success");
+            } catch (error) {
+                showActionToast(error.message || "Could not install update.", true);
+                addManagerActivity("Failed app update install attempt.", "error");
+            }
+        }
+
+        function renderManagerActivityLog() {
+            const container = document.getElementById("managerActivityLog");
+            if (!container) return;
+            if (!managerActivityLog.length) {
+                container.innerHTML = `<div style="color:#a58f6b;font-size:13px;">No manager actions yet.</div>`;
+                return;
+            }
+            container.innerHTML = managerActivityLog.slice(0, 12).map((entry) => {
+                const time = new Date(entry.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+                const color = entry.level === "error" ? "#ffd9d9" : "#f5f0e8";
+                return `<div class="activity-row"><span style="color:${color};">${escapeHtml(entry.message)}</span><span class="activity-time">${time}</span></div>`;
+            }).join("");
+        }
+
+        function clearManagerActivityLog() {
+            managerActivityLog = [];
+            localStorage.setItem(managerActivityLogKey, JSON.stringify(managerActivityLog));
+            renderManagerActivityLog();
+            showManagerMessage("Manager activity log cleared.");
+            showActionToast("Manager activity log cleared.", false);
+        }
+
+        async function copyManagerActivityLog() {
+            const text = managerActivityLog
+                .map((entry) => `${new Date(entry.timestamp).toLocaleString()} - ${entry.level.toUpperCase()} - ${entry.message}`)
+                .join("\n");
+            if (!text) {
+                showActionToast("No activity log entries to copy.", true);
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(text);
+                showActionToast("Manager activity log copied.", false);
+            } catch (error) {
+                showActionToast("Copy failed. Clipboard access unavailable.", true);
+            }
+        }
+
+        function exportSalonData() {
+            const payload = {
+                exportedAt: new Date().toISOString(),
+                app: "NailQue",
+                version: "1.0.0",
+                data: {
+                    queueState: JSON.parse(localStorage.getItem(queueStateKey) || "null"),
+                    serviceRecords: JSON.parse(localStorage.getItem(serviceRecordsKey) || "[]"),
+                    bonusSettings: JSON.parse(localStorage.getItem(bonusSettingsKey) || "null"),
+                    bonusClockIns: JSON.parse(localStorage.getItem(bonusClockInsKey) || "{}"),
+                    managerActivityLog: JSON.parse(localStorage.getItem(managerActivityLogKey) || "[]"),
+                    nailTechNames: JSON.parse(localStorage.getItem("nailTechNames") || "[]"),
+                    nailTechCredentials: JSON.parse(localStorage.getItem("nailTechCredentials") || "{}"),
+                    theme: localStorage.getItem(queueThemeKey) || "dark"
+                }
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            const dateTag = new Date().toISOString().slice(0, 10);
+            anchor.href = url;
+            anchor.download = `nailque-backup-${dateTag}.json`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+            showActionToast("Salon data exported.", false);
+            addManagerActivity("Exported salon backup file.", "success");
+        }
+
+        function triggerImportSalonData() {
+            const input = document.getElementById("importSalonDataInput");
+            if (!input) return;
+            input.value = "";
+            input.click();
+        }
+
+        function applyImportedSalonData(payload) {
+            if (!payload || !payload.data || typeof payload.data !== "object") {
+                throw new Error("Invalid backup format.");
+            }
+            const data = payload.data;
+            if (data.queueState !== undefined && data.queueState !== null) {
+                localStorage.setItem(queueStateKey, JSON.stringify(data.queueState));
+            }
+            if (Array.isArray(data.serviceRecords)) {
+                localStorage.setItem(serviceRecordsKey, JSON.stringify(data.serviceRecords));
+            }
+            if (data.bonusSettings && data.bonusSettings.start && data.bonusSettings.end) {
+                localStorage.setItem(bonusSettingsKey, JSON.stringify(data.bonusSettings));
+            }
+            if (data.bonusClockIns && typeof data.bonusClockIns === "object") {
+                localStorage.setItem(bonusClockInsKey, JSON.stringify(data.bonusClockIns));
+            }
+            if (Array.isArray(data.managerActivityLog)) {
+                localStorage.setItem(managerActivityLogKey, JSON.stringify(data.managerActivityLog));
+            }
+            if (Array.isArray(data.nailTechNames)) {
+                localStorage.setItem("nailTechNames", JSON.stringify(data.nailTechNames));
+            }
+            if (data.nailTechCredentials && typeof data.nailTechCredentials === "object") {
+                localStorage.setItem("nailTechCredentials", JSON.stringify(data.nailTechCredentials));
+            }
+            if (data.theme === "light" || data.theme === "dark") {
+                localStorage.setItem(queueThemeKey, data.theme);
+            }
         }
 
         async function openManagerAccess() {
@@ -454,9 +1159,14 @@
             document.getElementById("bonusStartInput").value = bonusSettings.start;
             document.getElementById("bonusEndInput").value = bonusSettings.end;
             renderManagerTechList();
+            renderManagerActivityLog();
+            fetchUpdateStatus(false);
             showManagerMessage("");
             document.getElementById("currentManagerPinInput").value = "";
             document.getElementById("newManagerPinInput").value = "";
+            document.getElementById("newTechPasswordShow").checked = false;
+            const pw = document.getElementById("newTechPassword");
+            if (pw) { pw.type = "password"; }
             document.getElementById("managerModal").style.display = "flex";
         }
 
@@ -464,17 +1174,29 @@
             document.getElementById("managerModal").style.display = "none";
         }
 
+        function toggleNewTechPasswordVisible() {
+            const show = document.getElementById("newTechPasswordShow").checked;
+            const input = document.getElementById("newTechPassword");
+            if (input) {
+                input.type = show ? "text" : "password";
+            }
+        }
+
         function saveBonusSettings() {
             const start = document.getElementById("bonusStartInput").value;
             const end = document.getElementById("bonusEndInput").value;
             if (!start || !end || hhmmToMinutes(start) >= hhmmToMinutes(end)) {
                 showManagerMessage("Invalid bonus hours. End must be after start.", true);
+                showActionToast("Bonus hours not saved: invalid time window.", true);
+                addManagerActivity("Attempted to save invalid bonus window.", "error");
                 return;
             }
             bonusSettings = { start, end };
             localStorage.setItem(bonusSettingsKey, JSON.stringify(bonusSettings));
             rebuildBonusOrder();
             showManagerMessage("Bonus hours saved.");
+            showActionToast(`Bonus window updated: ${start} - ${end}.`, false);
+            addManagerActivity(`Updated bonus window to ${start} - ${end}.`, "success");
         }
 
         function setTechStatusOverride(name, status) {
@@ -484,6 +1206,11 @@
                 bonusClockIns[name] = Date.now();
                 localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
             }
+            if (status !== "Available") {
+                bonusCycleQueue = bonusCycleQueue.filter((n) => n !== name);
+            } else {
+                syncBonusCycleQueue();
+            }
             tech.status = status;
             if (status !== "Busy") {
                 tech.current = null;
@@ -492,6 +1219,8 @@
             saveQueueState();
             renderTechBoard();
             renderManagerTechList();
+            showActionToast(`${name} set to ${status}.`, false);
+            addManagerActivity(`Set ${name} status to ${status}.`, "success");
             if (status === "Available") autoAssign();
         }
 
@@ -515,53 +1244,198 @@
                 document.getElementById("currentManagerPinInput").value = "";
                 document.getElementById("newManagerPinInput").value = "";
                 showManagerMessage("Manager PIN updated.");
+                showActionToast("Manager PIN updated.", false);
+                addManagerActivity("Updated manager PIN.", "success");
             } catch (error) {
                 showManagerMessage(error.message, true);
+                showActionToast(error.message || "Failed to update manager PIN.", true);
+                addManagerActivity("Failed to update manager PIN.", "error");
             }
         }
 
-        async function sendTechInvite() {
-            const techName = document.getElementById("inviteTechName").value.trim();
-            const contact = document.getElementById("inviteContact").value.trim();
-            const channel = document.getElementById("inviteChannel").value;
-            if (!techName || !contact) {
-                showManagerMessage("Please provide tech name and contact.", true);
+        function createTechAccount() {
+            const techName = document.getElementById("newTechName").value.trim();
+            const identifier = document.getElementById("newTechIdentifier").value.trim();
+            const password = document.getElementById("newTechPassword").value.trim();
+            if (!techName || !identifier || !password) {
+                showManagerMessage("Please provide name, login identifier, and password.", true);
+                showActionToast("Account not created: all fields are required.", true);
+                addManagerActivity("Failed account create: missing required fields.", "error");
+                return;
+            }
+            if (password.length < 4) {
+                showManagerMessage("Password must be at least 4 characters.", true);
+                showActionToast("Account not created: password must be at least 4 characters.", true);
+                addManagerActivity(`Failed account create for ${techName || "unknown"}: short password.`, "error");
+                return;
+            }
+            const normalizedTechName = techName.toLowerCase();
+            const nameTaken = Object.keys(techs).some((name) => name.toLowerCase() === normalizedTechName);
+            const creds = getCredentialsMap();
+            const normalizedIdentifier = normalizeIdentifier(identifier);
+            const identifierTaken = Object.entries(creds).some(([name, cred]) => {
+                if (name.toLowerCase() === normalizedTechName) return false;
+                return normalizeIdentifier(cred && cred.identifier) === normalizedIdentifier;
+            });
+            if (identifierTaken) {
+                showManagerMessage("This login ID is already in use by another tech.", true);
+                showActionToast("Account not created: login ID already in use.", true);
+                addManagerActivity(`Failed account create for ${techName}: duplicate login ID.`, "error");
                 return;
             }
 
-            try {
-                const response = await fetch("/api/invites", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ techName, contact, channel })
-                });
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.error || "Invite failed");
-
-                upsertTechAccountFromInvite(data.techName || techName, data.identifier || contact);
-                showManagerMessage(`Invite sent to ${contact}.`);
-                document.getElementById("inviteTechName").value = "";
-                document.getElementById("inviteContact").value = "";
-                renderManagerTechList();
-            } catch (error) {
-                showManagerMessage(error.message, true);
-            }
-        }
-
-        function upsertTechAccountFromInvite(techName, identifier) {
             if (!techs[techName]) {
                 techs[techName] = { status: "Offline", current: null, startTime: null, earnings: 0 };
+            } else if (!nameTaken) {
+                // Name exists with different case variant, do not create duplicates.
+                showManagerMessage("A tech with this name already exists.", true);
+                showActionToast("Account not created: duplicate tech name.", true);
+                addManagerActivity(`Failed account create: duplicate tech name ${techName}.`, "error");
+                return;
             }
             const names = JSON.parse(localStorage.getItem("nailTechNames") || "[]");
             if (!names.includes(techName)) names.push(techName);
             localStorage.setItem("nailTechNames", JSON.stringify(names));
 
-            const creds = JSON.parse(localStorage.getItem("nailTechCredentials") || "{}");
             creds[techName] = creds[techName] || {};
-            creds[techName].identifier = identifier;
-            creds[techName].password = creds[techName].password || "setup-required";
-            localStorage.setItem("nailTechCredentials", JSON.stringify(creds));
+            creds[techName].identifier = identifier.trim();
+            creds[techName].password = password;
+            saveCredentialsMap(creds);
+
+            document.getElementById("newTechName").value = "";
+            document.getElementById("newTechIdentifier").value = "";
+            document.getElementById("newTechPassword").value = "";
+            document.getElementById("newTechPasswordShow").checked = false;
+            document.getElementById("newTechPassword").type = "password";
+            showManagerMessage(`Account created for ${techName}.`);
+            showActionToast(`Account created for ${techName}.`, false);
+            addManagerActivity(`Created account for ${techName}.`, "success");
+            renderManagerTechList();
             saveQueueState();
+        }
+
+        function resetTechAccountPassword(techName) {
+            if (!techName || !techs[techName]) {
+                showActionToast("Could not reset password: tech not found.", true);
+                addManagerActivity("Failed password reset: tech not found.", "error");
+                return;
+            }
+            const next = prompt(`New password for ${techName} (min 4 characters):`, "");
+            if (next == null) return;
+            const newPassword = next.trim();
+            if (newPassword.length < 4) {
+                showManagerMessage("Password must be at least 4 characters.", true);
+                showActionToast("Password reset failed: minimum 4 characters.", true);
+                addManagerActivity(`Failed password reset for ${techName}: password too short.`, "error");
+                return;
+            }
+            const creds = getCredentialsMap();
+            creds[techName] = creds[techName] || {};
+            creds[techName].password = newPassword;
+            if (!creds[techName].identifier) {
+                creds[techName].identifier = `${String(techName).toLowerCase().replace(/\s+/g, "")}@example.com`;
+            }
+            saveCredentialsMap(creds);
+            showManagerMessage(`Password updated for ${techName}.`);
+            showActionToast(`Password reset for ${techName}.`, false);
+            addManagerActivity(`Reset password for ${techName}.`, "success");
+        }
+
+        function openRemoveTechConfirm(techName) {
+            if (!techName || !techs[techName]) return;
+            pendingRemoveTechName = techName;
+            const t = techs[techName];
+            let msg = `Remove ${techName} from the program? This deletes their employee login.`;
+            if (t.status === "Busy" && t.current) {
+                msg = `${techName} is with customer "${t.current}". If you remove them, that customer will return to the top of the waiting queue and their login will be deleted.`;
+            } else if (t.status === "Busy") {
+                msg = `${techName} is marked busy. Remove them from the program? Their login will be deleted.`;
+            }
+            document.getElementById("removeTechConfirmText").textContent = msg;
+            document.getElementById("removeTechConfirmModal").style.display = "flex";
+        }
+
+        function cancelRemoveTechConfirm() {
+            pendingRemoveTechName = null;
+            document.getElementById("removeTechConfirmModal").style.display = "none";
+        }
+
+        function confirmRemoveTechAccount() {
+            const techName = pendingRemoveTechName;
+            if (!techName || !techs[techName]) {
+                cancelRemoveTechConfirm();
+                showActionToast("Could not remove tech: no selection.", true);
+                addManagerActivity("Failed tech removal: no selection.", "error");
+                return;
+            }
+            if (Object.keys(techs).length <= 1) {
+                cancelRemoveTechConfirm();
+                showManagerMessage("You must keep at least one active tech account.", true);
+                showActionToast("Remove blocked: at least one tech account is required.", true);
+                addManagerActivity(`Blocked removal of ${techName}: last tech protection.`, "error");
+                return;
+            }
+            const t = techs[techName];
+            lastRemovedTechSnapshot = {
+                name: techName,
+                tech: { ...t },
+                credentials: { ...(getCredentialsMap()[techName] || {}) },
+                removedAt: Date.now()
+            };
+            if (t.status === "Busy" && t.current) {
+                waitingQueue.unshift({ id: nextCustomerId++, name: t.current, arrival: Date.now() });
+            }
+
+            delete bonusClockIns[techName];
+            localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
+
+            const creds = JSON.parse(localStorage.getItem("nailTechCredentials") || "{}");
+            delete creds[techName];
+            localStorage.setItem("nailTechCredentials", JSON.stringify(creds));
+
+            const names = JSON.parse(localStorage.getItem("nailTechNames") || "[]");
+            const filtered = names.filter((n) => n !== techName);
+            localStorage.setItem("nailTechNames", JSON.stringify(filtered));
+
+            delete techs[techName];
+            pendingRemoveTechName = null;
+            document.getElementById("removeTechConfirmModal").style.display = "none";
+            saveQueueState();
+            showManagerMessage(`Removed ${techName} from the program.`);
+            showActionToast(`${techName} removed from the program. Use Undo if needed.`, false);
+            addManagerActivity(`Removed ${techName} from the program.`, "success");
+            renderTechBoard();
+            renderManagerTechList();
+            autoAssign();
+            renderQueue();
+        }
+
+        function undoLastTechRemoval() {
+            if (!lastRemovedTechSnapshot) {
+                showActionToast("No recent tech removal to undo.", true);
+                return;
+            }
+            const { name, tech, credentials } = lastRemovedTechSnapshot;
+            if (techs[name]) {
+                showActionToast("Undo not available: tech already exists.", true);
+                return;
+            }
+            techs[name] = tech;
+            const names = JSON.parse(localStorage.getItem("nailTechNames") || "[]");
+            if (!names.includes(name)) names.push(name);
+            localStorage.setItem("nailTechNames", JSON.stringify(names));
+            const creds = getCredentialsMap();
+            creds[name] = credentials && Object.keys(credentials).length ? credentials : {
+                identifier: `${String(name).toLowerCase().replace(/\s+/g, "")}@example.com`,
+                password: "1234"
+            };
+            saveCredentialsMap(creds);
+            saveQueueState();
+            renderTechBoard();
+            renderManagerTechList();
+            showActionToast(`Restored ${name}.`, false);
+            addManagerActivity(`Undid removal for ${name}.`, "success");
+            lastRemovedTechSnapshot = null;
         }
 
         function openFinishModal(techName) {
@@ -575,10 +1449,24 @@
             document.getElementById("finishCustomerNameDisplay").textContent = tech.current || "Customer";
             let html = "";
             servicesMenu.forEach((service, i) => {
+                const isNailArt = service.name === "Nail Art (per nail)";
                 html += `
-                <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #3d2a1f;">
-                    <label><input type="checkbox" onchange="calculateTotal()" data-index="${i}"> ${service.name}</label>
-                    <span>$${service.price}</span>
+                <div class="service-row" onclick="toggleServiceSelection(event, ${i})">
+                    <div class="service-left">
+                        <input type="checkbox" onchange="calculateTotal()" data-index="${i}">
+                        <span>${service.name}</span>
+                        ${isNailArt ? `
+                            <select
+                                data-qty-index="${i}"
+                                onchange="calculateTotal()"
+                                style="background:#2a221b;color:#f5f0e8;border:1px solid #3d2a1f;border-radius:8px;padding:4px 8px;font-size:14px;"
+                                aria-label="Nail art quantity"
+                            >
+                                ${Array.from({ length: 10 }, (_, n) => `<option value="${n + 1}">${n + 1}</option>`).join("")}
+                            </select>
+                        ` : ""}
+                    </div>
+                    <span class="service-price">${isNailArt ? "$5 each" : `$${service.price}`}</span>
                 </div>`;
             });
             document.getElementById("serviceList").innerHTML = html;
@@ -590,19 +1478,42 @@
         function calculateTotal() {
             let total = 0;
             document.querySelectorAll("#serviceList input:checked").forEach((cb) => {
-                total += servicesMenu[parseInt(cb.dataset.index, 10)].price;
+                const idx = parseInt(cb.dataset.index, 10);
+                const service = servicesMenu[idx];
+                if (!service) return;
+                if (service.name === "Nail Art (per nail)") {
+                    const qtySelect = document.querySelector(`#serviceList select[data-qty-index="${idx}"]`);
+                    const qty = qtySelect ? Math.min(10, Math.max(1, parseInt(qtySelect.value, 10) || 1)) : 1;
+                    total += service.price * qty;
+                } else {
+                    total += service.price;
+                }
             });
             document.getElementById("totalAmount").textContent = `$${total.toFixed(2)}`;
             document.getElementById("employeeEarnings").textContent = `$${(total * 0.6).toFixed(2)}`;
         }
 
+        function toggleServiceSelection(event, idx) {
+            const target = event.target;
+            if (target.closest("input, select, option")) return;
+            const checkbox = document.querySelector(`#serviceList input[data-index="${idx}"]`);
+            if (!checkbox) return;
+            checkbox.checked = !checkbox.checked;
+            calculateTotal();
+        }
+
         function completeServiceWithEarnings() {
             if (!currentFinishingTech) return;
             const tech = techs[currentFinishingTech];
+            const completedCustomerName = tech.current || "customer";
             const total = parseFloat(document.getElementById("totalAmount").textContent.replace("$", "")) || 0;
             const selectedServiceIndexes = Array.from(document.querySelectorAll("#serviceList input:checked"))
                 .map((cb) => parseInt(cb.dataset.index, 10))
                 .filter((idx) => Number.isInteger(idx) && servicesMenu[idx]);
+            if (selectedServiceIndexes.length === 0) {
+                const proceed = confirm("No services selected. Complete service with $0 total?");
+                if (!proceed) return;
+            }
             const selectedServices = selectedServiceIndexes.map((idx) => servicesMenu[idx].name);
             const employeeShare = total * 0.6;
 
@@ -628,6 +1539,7 @@
             currentFinishingTech = null;
             saveQueueState();
             autoAssign();
+            showActionToast(`Service completed for ${completedCustomerName}.`, false);
             alert(`Service complete!\nEmployee earned: $${employeeShare.toFixed(2)}`);
         }
 
@@ -647,13 +1559,92 @@
                 bonusClockIns[name] = Date.now();
                 localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
             }
+            syncBonusCycleQueue();
             saveQueueState();
             autoAssign();
             renderTechBoard();
         }
 
+        function unreadyTech(name) {
+            const tech = techs[name];
+            if (!tech) return;
+            if (tech.status === "Busy") {
+                showActionToast(`${name} is busy and cannot go unready right now.`, true);
+                return;
+            }
+            tech.status = "Offline";
+            tech.current = null;
+            tech.startTime = null;
+            bonusCycleQueue = bonusCycleQueue.filter((n) => n !== name);
+            saveQueueState();
+            renderTechBoard();
+            renderManagerTechList();
+            showActionToast(`${name} is now offline.`, false);
+            addManagerActivity(`${name} set themselves to Offline (unready).`, "success");
+        }
+
+        function toggleTechBreak(name) {
+            const tech = techs[name];
+            if (!tech) return;
+            if (tech.status === "Busy") {
+                showActionToast(`${name} is serving a customer and cannot start a break.`, true);
+                return;
+            }
+            if (tech.status === "On Break") {
+                tech.status = "Available";
+                if (!bonusClockIns[name]) {
+                    bonusClockIns[name] = Date.now();
+                    localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
+                }
+                saveQueueState();
+                showActionToast(`${name} is back from break.`, false);
+                autoAssign();
+                return;
+            }
+            tech.status = "On Break";
+            tech.current = null;
+            tech.startTime = null;
+            bonusCycleQueue = bonusCycleQueue.filter((n) => n !== name);
+            saveQueueState();
+            renderTechBoard();
+            showActionToast(`${name} is now on break.`, false);
+        }
+
+        function skipNextForTech(name) {
+            const tech = techs[name];
+            if (!tech || tech.status !== "Available") {
+                showActionToast(`${name} must be available to skip a turn.`, true);
+                return;
+            }
+            if (waitingQueue.length === 0) {
+                showActionToast("No waiting customers to skip.", true);
+                return;
+            }
+            const nextTech = getNextAvailableTechForAssignment();
+            if (nextTech !== name) {
+                showActionToast(`${name} is not next in rotation right now.`, true);
+                return;
+            }
+            const hasAssignableCustomer = findAssignableCustomerIndex(name) !== -1;
+            if (!hasAssignableCustomer) {
+                showActionToast(`${name} has no assignable customer to skip right now.`, true);
+                return;
+            }
+            const latestClockIn = Math.max(...Object.keys(techs).map((techName) => bonusClockIns[techName] || 0), 0);
+            bonusClockIns[name] = latestClockIn + 1;
+            localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
+            syncBonusCycleQueue();
+            saveQueueState();
+            autoAssign();
+            showActionToast(`${name} skipped this turn.`, false);
+        }
+
         function openAddCustomerModal() {
             document.getElementById("customerNameInput").value = "";
+            document.getElementById("isAppointmentInput").checked = false;
+            document.getElementById("appointmentTimeInput").value = "";
+            populateRequestedTechOptions();
+            toggleAppointmentFields();
             document.getElementById("addCustomerModal").style.display = "flex";
             setTimeout(() => document.getElementById("customerNameInput").focus(), 0);
         }
@@ -664,15 +1655,57 @@
 
         function submitAddCustomerModal() {
             const name = document.getElementById("customerNameInput").value.trim();
+            const isAppointment = document.getElementById("isAppointmentInput").checked;
+            const appointmentTimeValue = document.getElementById("appointmentTimeInput").value;
+            const requestedTech = document.getElementById("requestedTechInput").value;
             if (!name) {
                 alert("Please enter customer name.");
                 return;
             }
-            waitingQueue.push({ id: nextCustomerId++, name, arrival: Date.now() });
+            if (isAppointment && !appointmentTimeValue) {
+                alert("Please enter appointment time.");
+                return;
+            }
+            let appointmentTime = null;
+            if (isAppointment && appointmentTimeValue) {
+                const [h, m] = appointmentTimeValue.split(":").map((v) => parseInt(v, 10));
+                const appointmentDate = new Date();
+                appointmentDate.setHours(h, m, 0, 0);
+                appointmentTime = appointmentDate.getTime();
+            }
+            waitingQueue.push({
+                id: nextCustomerId++,
+                name,
+                arrival: Date.now(),
+                appointmentTime,
+                requestedTech: requestedTech || ""
+            });
             saveQueueState();
             closeAddCustomerModal();
             autoAssign();
             renderQueue();
+            showActionToast(`${name} added to queue${appointmentTime ? ` for ${formatAppointmentLabel(appointmentTime)}` : ""}.`, false);
+        }
+
+        function toggleAppointmentFields() {
+            const isAppointment = document.getElementById("isAppointmentInput").checked;
+            const wrapper = document.getElementById("appointmentFields");
+            wrapper.style.display = isAppointment ? "block" : "none";
+        }
+
+        function populateRequestedTechOptions() {
+            const select = document.getElementById("requestedTechInput");
+            const previous = select.value;
+            let options = `<option value="">No preference (next available)</option>`;
+            Object.keys(techs).forEach((techName) => {
+                options += `<option value="${escapeHtml(techName)}">${escapeHtml(techName)}</option>`;
+            });
+            select.innerHTML = options;
+            if (Object.keys(techs).includes(previous)) {
+                select.value = previous;
+            } else {
+                select.value = "";
+            }
         }
 
         function saveServiceRecord(record) {
@@ -689,7 +1722,13 @@
             const saved = JSON.parse(localStorage.getItem(queueStateKey) || "null");
             if (!saved) return;
             if (saved.techs && typeof saved.techs === "object") techs = saved.techs;
-            if (Array.isArray(saved.waitingQueue)) waitingQueue = saved.waitingQueue;
+            if (Array.isArray(saved.waitingQueue)) {
+                waitingQueue = saved.waitingQueue.map((customer) => ({
+                    ...customer,
+                    appointmentTime: customer.appointmentTime || null,
+                    requestedTech: customer.requestedTech || ""
+                }));
+            }
             if (Number.isInteger(saved.nextCustomerId)) nextCustomerId = saved.nextCustomerId;
         }
 
@@ -710,11 +1749,20 @@
             if (saved && saved.start && saved.end) bonusSettings = saved;
             const savedClockIns = JSON.parse(localStorage.getItem(bonusClockInsKey) || "{}");
             if (savedClockIns && typeof savedClockIns === "object") bonusClockIns = savedClockIns;
+            const savedActivity = JSON.parse(localStorage.getItem(managerActivityLogKey) || "[]");
+            if (Array.isArray(savedActivity)) managerActivityLog = savedActivity;
         }
 
         function toggleFullscreen() {
             if (!document.fullscreenElement) document.documentElement.requestFullscreen();
             else document.exitFullscreen();
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle("light-theme");
+            const mode = document.body.classList.contains("light-theme") ? "light" : "dark";
+            localStorage.setItem(queueThemeKey, mode);
+            showActionToast(`Theme set to ${mode}.`, false);
         }
 
         function updateClock() {
@@ -726,17 +1774,76 @@
             loadQueueState();
             loadBonusSettings();
             initializeSharedTechConfig();
+            const savedTheme = localStorage.getItem(queueThemeKey);
+            if (savedTheme === "light") document.body.classList.add("light-theme");
             renderTechBoard();
             renderQueue();
+            const managerTechList = document.getElementById("managerTechList");
+            managerTechList.addEventListener("click", onManagerTechListClick);
+            managerTechList.addEventListener("change", onManagerTechListChange);
             document.getElementById("customerNameInput").addEventListener("keydown", (event) => {
                 if (event.key === "Enter") submitAddCustomerModal();
+            });
+            document.getElementById("newTechPassword").addEventListener("keydown", (event) => {
+                if (event.key === "Enter") createTechAccount();
+            });
+            document.addEventListener("keydown", (event) => {
+                if (event.key !== "Escape") return;
+                if (document.getElementById("removeTechConfirmModal").style.display === "flex") cancelRemoveTechConfirm();
+                else if (document.getElementById("managerModal").style.display === "flex") closeManagerModal();
+                else if (document.getElementById("finishModal").style.display === "flex") cancelFinishModal();
+                else if (document.getElementById("addCustomerModal").style.display === "flex") closeAddCustomerModal();
+            });
+            document.getElementById("addCustomerModal").addEventListener("click", (event) => {
+                if (event.target.id === "addCustomerModal") closeAddCustomerModal();
+            });
+            document.getElementById("finishModal").addEventListener("click", (event) => {
+                if (event.target.id === "finishModal") cancelFinishModal();
+            });
+            document.getElementById("managerModal").addEventListener("click", (event) => {
+                if (event.target.id === "managerModal") closeManagerModal();
+            });
+            document.getElementById("removeTechConfirmModal").addEventListener("click", (event) => {
+                if (event.target.id === "removeTechConfirmModal") cancelRemoveTechConfirm();
+            });
+            document.getElementById("importSalonDataInput").addEventListener("change", (event) => {
+                const file = event.target.files && event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const payload = JSON.parse(String(reader.result || ""));
+                        if (!confirm("Import backup and overwrite current local data?")) return;
+                        applyImportedSalonData(payload);
+                        loadQueueState();
+                        loadBonusSettings();
+                        const savedThemeAfterImport = localStorage.getItem(queueThemeKey);
+                        document.body.classList.toggle("light-theme", savedThemeAfterImport === "light");
+                        renderTechBoard();
+                        renderQueue();
+                        renderManagerTechList();
+                        renderManagerActivityLog();
+                        showActionToast("Salon backup imported successfully.", false);
+                        addManagerActivity("Imported salon backup file.", "success");
+                    } catch (error) {
+                        showActionToast("Import failed: invalid backup file.", true);
+                        addManagerActivity("Failed to import salon backup.", "error");
+                    }
+                };
+                reader.readAsText(file);
             });
             setInterval(() => {
                 updateClock();
                 renderTechBoard();
                 renderQueue();
             }, 1000);
+            setInterval(() => {
+                fetchUpdateStatus(false);
+            }, 30000);
             updateClock();
+            setupSoundEffects();
+            fetchUpdateStatus(false);
+            setTimeout(() => playSoundEffect("startup"), 220);
             console.log("%c✅ M. VINCÉ Nail Spa Queue System Ready with Tech Management", "color:#d4af77;font-size:18px");
         }
         window.onload = init;

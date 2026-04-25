@@ -1,2 +1,4 @@
 Flask
 python-dotenv
+pyinstaller
+pywebview

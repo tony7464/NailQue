@@ -1,57 +1,114 @@
-from flask import Flask, send_from_directory, request, jsonify
-import os
+from flask import Flask, jsonify, request, send_from_directory
 import json
+import logging
+from logging.handlers import RotatingFileHandler
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import threading
+import time
 import uuid
-import re
-import smtplib
-from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
-from urllib import request as urlrequest
-from urllib import parse as urlparse
-from urllib.error import HTTPError, URLError
+import webbrowser
+from urllib.error import URLError
+from urllib.request import urlopen, Request
 from dotenv import load_dotenv
 
 app = Flask(__name__)
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-INVITE_AUDIT_FILE = os.path.join(BASE_DIR, "invite_audit.json")
-MANAGER_SETTINGS_FILE = os.path.join(BASE_DIR, "manager_settings.json")
+app.config["JSONIFY_PRETTYPRINT_REGULAR"] = False
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024  # 64KB request limit
 
 
-def _read_audit_log():
-    if not os.path.exists(INVITE_AUDIT_FILE):
-        return []
+def _get_paths():
+    if getattr(sys, "frozen", False):
+        assets_dir = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        runtime_dir = Path.home() / "Library" / "Application Support" / "NailQue"
+    else:
+        assets_dir = Path(__file__).resolve().parent
+        runtime_dir = assets_dir
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    return assets_dir, runtime_dir
+
+
+ASSETS_DIR, RUNTIME_DIR = _get_paths()
+load_dotenv(RUNTIME_DIR / ".env")
+MANAGER_SETTINGS_FILE = RUNTIME_DIR / "manager_settings.json"
+LOGS_DIR = RUNTIME_DIR / "logs"
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+UPDATES_DIR = RUNTIME_DIR / "updates"
+UPDATES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _load_app_version() -> str:
+    version_file = ASSETS_DIR / "VERSION"
+    if version_file.exists():
+        try:
+            version = version_file.read_text(encoding="utf-8").strip()
+            if version:
+                return version
+        except OSError:
+            pass
+    return "1.0.0"
+
+
+APP_VERSION = _load_app_version()
+AUTO_UPDATE_REPO = os.getenv("AUTO_UPDATE_REPO", "").strip()
+AUTO_UPDATE_ENABLED = os.getenv("AUTO_UPDATE_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+AUTO_UPDATE_CHECK_INTERVAL_SECONDS = max(300, int(os.getenv("AUTO_UPDATE_CHECK_INTERVAL_SECONDS", "900")))
+AUTO_UPDATE_INCLUDE_PRERELEASE = os.getenv("AUTO_UPDATE_INCLUDE_PRERELEASE", "false").strip().lower() in {"1", "true", "yes", "on"}
+UPDATE_LOCK = threading.Lock()
+UPDATE_STATE = {
+    "current_version": APP_VERSION,
+    "repo": AUTO_UPDATE_REPO,
+    "enabled": AUTO_UPDATE_ENABLED and bool(AUTO_UPDATE_REPO),
+    "checking": False,
+    "available": False,
+    "latest_version": APP_VERSION,
+    "release_name": "",
+    "release_notes": "",
+    "asset_name": "",
+    "asset_url": "",
+    "downloaded_path": "",
+    "last_checked": 0,
+    "last_error": "",
+}
+
+
+def _setup_logging():
+    app.logger.setLevel(logging.INFO)
+    file_handler = RotatingFileHandler(LOGS_DIR / "nailque.log", maxBytes=2_000_000, backupCount=5, encoding="utf-8")
+    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+    file_handler.setFormatter(formatter)
+    app.logger.addHandler(file_handler)
+
+
+_setup_logging()
+
+
+def _read_json(path: Path, fallback):
+    if not path.exists():
+        return fallback
     try:
-        with open(INVITE_AUDIT_FILE, "r", encoding="utf-8") as file:
+        with path.open("r", encoding="utf-8") as file:
             return json.load(file)
     except (json.JSONDecodeError, OSError):
-        return []
+        return fallback
 
 
-def _write_audit_log(entries):
-    with open(INVITE_AUDIT_FILE, "w", encoding="utf-8") as file:
-        json.dump(entries, file, indent=2)
-
-
-def _append_audit(entry):
-    entries = _read_audit_log()
-    entries.append(entry)
-    _write_audit_log(entries)
+def _write_json_atomic(path: Path, payload):
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    with temp_path.open("w", encoding="utf-8") as file:
+        json.dump(payload, file, indent=2)
+    os.replace(temp_path, path)
 
 
 def _read_manager_settings():
-    if not os.path.exists(MANAGER_SETTINGS_FILE):
-        return {}
-    try:
-        with open(MANAGER_SETTINGS_FILE, "r", encoding="utf-8") as file:
-            return json.load(file)
-    except (json.JSONDecodeError, OSError):
-        return {}
+    return _read_json(MANAGER_SETTINGS_FILE, {})
 
 
 def _write_manager_settings(settings):
-    with open(MANAGER_SETTINGS_FILE, "w", encoding="utf-8") as file:
-        json.dump(settings, file, indent=2)
+    _write_json_atomic(MANAGER_SETTINGS_FILE, settings)
 
 
 def _get_manager_pin():
@@ -67,240 +124,226 @@ def _set_manager_pin(new_pin):
     _write_manager_settings({"pin": str(new_pin)})
 
 
-def _get_invite(invite_id):
-    entries = _read_audit_log()
-    for entry in entries:
-        if entry.get("id") == invite_id:
-            return entry
+def _normalize_version(value: str):
+    cleaned = str(value or "").strip().lower()
+    if cleaned.startswith("v"):
+        cleaned = cleaned[1:]
+    parts = []
+    for piece in cleaned.split("."):
+        if piece.isdigit():
+            parts.append(int(piece))
+        else:
+            num = ""
+            for char in piece:
+                if char.isdigit():
+                    num += char
+                else:
+                    break
+            parts.append(int(num) if num else 0)
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts[:3])
+
+
+def _is_newer_version(candidate: str, current: str) -> bool:
+    return _normalize_version(candidate) > _normalize_version(current)
+
+
+def _select_release_asset(release_payload):
+    assets = release_payload.get("assets") or []
+    preferred = None
+    for asset in assets:
+        name = str(asset.get("name") or "")
+        if name.endswith(".pkg") and "NailQue-macOS" in name:
+            preferred = asset
+            break
+    if preferred:
+        return preferred
+    for asset in assets:
+        name = str(asset.get("name") or "")
+        if name.endswith(".pkg"):
+            return asset
     return None
 
 
-def _update_invite(invite_id, updater):
-    entries = _read_audit_log()
-    updated = None
-    for idx, entry in enumerate(entries):
-        if entry.get("id") == invite_id:
-            updated_entry = dict(entry)
-            updater(updated_entry)
-            entries[idx] = updated_entry
-            updated = updated_entry
-            break
-    if updated is not None:
-        _write_audit_log(entries)
-    return updated
-
-
-def _is_valid_email(value):
-    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", value))
-
-
-def _normalize_phone(value):
-    digits = re.sub(r"[^\d+]", "", value)
-    if digits.startswith("00"):
-        digits = f"+{digits[2:]}"
-    if not digits.startswith("+") and len(digits) == 10:
-        digits = f"+1{digits}"
-    return digits
-
-
-def _build_invite_link(token):
-    base = os.getenv("APP_BASE_URL", "http://localhost:5001")
-    return f"{base}/employee?invite={token}"
-
-
-def _send_email_invite(target, tech_name, invite_link):
-    host = os.getenv("SMTP_HOST")
-    port = int(os.getenv("SMTP_PORT", "587"))
-    username = os.getenv("SMTP_USERNAME")
-    password = os.getenv("SMTP_PASSWORD")
-    from_email = os.getenv("EMAIL_FROM")
-    use_tls = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
-
-    if not host or not from_email:
-        raise ValueError("Email provider not configured. Set SMTP_HOST and EMAIL_FROM.")
-
-    msg = EmailMessage()
-    msg["Subject"] = "M. VINCE Nail Spa Invite"
-    msg["From"] = from_email
-    msg["To"] = target
-    msg.set_content(
-        f"Hi {tech_name},\n\n"
-        f"You have been invited to set up your employee account.\n"
-        f"Open this link to continue: {invite_link}\n\n"
-        "If you did not expect this invitation, ignore this message."
-    )
-
-    with smtplib.SMTP(host, port, timeout=20) as server:
-        if use_tls:
-            server.starttls()
-        if username and password:
-            server.login(username, password)
-        server.send_message(msg)
-
-
-def _send_sms_invite(target, tech_name, invite_link):
-    sid = os.getenv("TWILIO_ACCOUNT_SID")
-    token = os.getenv("TWILIO_AUTH_TOKEN")
-    from_number = os.getenv("TWILIO_FROM_NUMBER")
-    if not sid or not token or not from_number:
-        raise ValueError("SMS provider not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER.")
-
-    body = (
-        f"Hi {tech_name}, you are invited to set up your M. VINCE Nail Spa employee account. "
-        f"Complete setup: {invite_link}"
-    )
-    payload = urlparse.urlencode({"To": target, "From": from_number, "Body": body}).encode("utf-8")
-    req = urlrequest.Request(
-        f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
-        data=payload,
-        method="POST"
-    )
-    credentials = f"{sid}:{token}".encode("utf-8")
-    encoded = __import__("base64").b64encode(credentials).decode("ascii")
-    req.add_header("Authorization", f"Basic {encoded}")
-    req.add_header("Content-Type", "application/x-www-form-urlencoded")
-    try:
-        with urlrequest.urlopen(req, timeout=20) as response:
-            if response.status not in (200, 201):
-                raise ValueError(f"SMS provider returned status {response.status}")
-    except HTTPError as error:
-        body = error.read().decode("utf-8", errors="ignore")
-        raise ValueError(f"SMS delivery failed: {body or error.reason}") from error
-    except URLError as error:
-        raise ValueError(f"SMS delivery failed: {error.reason}") from error
-
-
-@app.route('/api/invites', methods=['POST'])
-def create_invite():
-    payload = request.get_json(silent=True) or {}
-    tech_name = (payload.get("techName") or "").strip()
-    contact = (payload.get("contact") or "").strip()
-    channel = (payload.get("channel") or "").strip().lower()
-
-    if not tech_name or not contact or channel not in {"email", "sms"}:
-        return jsonify({"error": "techName, contact, and channel(email|sms) are required."}), 400
-
-    normalized_contact = contact
-    if channel == "email":
-        if not _is_valid_email(contact):
-            return jsonify({"error": "Invalid email address."}), 400
-        normalized_contact = contact.lower()
+def _fetch_latest_release(repo: str):
+    if not repo:
+        raise ValueError("AUTO_UPDATE_REPO is not configured.")
+    api_url = f"https://api.github.com/repos/{repo}/releases/latest"
+    if AUTO_UPDATE_INCLUDE_PRERELEASE:
+        api_url = f"https://api.github.com/repos/{repo}/releases?per_page=8"
+    request_obj = Request(api_url, headers={"Accept": "application/vnd.github+json", "User-Agent": "NailQue-Updater"})
+    with urlopen(request_obj, timeout=12) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if AUTO_UPDATE_INCLUDE_PRERELEASE:
+        if not isinstance(payload, list) or not payload:
+            raise RuntimeError("No releases found.")
+        release = payload[0]
     else:
-        normalized_contact = _normalize_phone(contact)
-        if not normalized_contact.startswith("+") or len(re.sub(r"[^\d]", "", normalized_contact)) < 10:
-            return jsonify({"error": "Invalid phone number."}), 400
-
-    invite_token = str(uuid.uuid4())
-    invite_link = _build_invite_link(invite_token)
-    now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(hours=24)
-    audit_entry = {
-        "id": invite_token,
-        "techName": tech_name,
-        "contact": normalized_contact,
-        "channel": channel,
-        "inviteLink": invite_link,
-        "createdAt": now.isoformat(),
-        "expiresAt": expires_at.isoformat(),
-        "status": "pending"
+        release = payload
+    tag_name = str(release.get("tag_name") or "").strip()
+    if not tag_name:
+        raise RuntimeError("Latest release is missing tag_name.")
+    version = tag_name[1:] if tag_name.lower().startswith("v") else tag_name
+    asset = _select_release_asset(release)
+    if not asset:
+        raise RuntimeError("No .pkg asset found on latest release.")
+    return {
+        "version": version,
+        "release_name": str(release.get("name") or tag_name),
+        "release_notes": str(release.get("body") or ""),
+        "asset_name": str(asset.get("name") or ""),
+        "asset_url": str(asset.get("browser_download_url") or ""),
     }
 
+
+def _download_update_asset(asset_name: str, asset_url: str, version: str) -> str:
+    if not asset_url:
+        raise RuntimeError("Update asset URL is missing.")
+    safe_name = f"NailQue-macOS-{version}.pkg"
+    if asset_name.endswith(".pkg"):
+        safe_name = asset_name
+    target = UPDATES_DIR / safe_name
+    temp_target = target.with_suffix(target.suffix + ".partial")
+    request_obj = Request(asset_url, headers={"User-Agent": "NailQue-Updater"})
+    with urlopen(request_obj, timeout=40) as response, temp_target.open("wb") as file:
+        shutil.copyfileobj(response, file)
+    os.replace(temp_target, target)
+    return str(target)
+
+
+def _set_update_error(message: str):
+    with UPDATE_LOCK:
+        UPDATE_STATE["checking"] = False
+        UPDATE_STATE["last_error"] = message
+        UPDATE_STATE["last_checked"] = int(time.time())
+
+
+def check_for_updates(download_if_available: bool = True):
+    if not UPDATE_STATE["enabled"]:
+        return
+    with UPDATE_LOCK:
+        if UPDATE_STATE["checking"]:
+            return
+        UPDATE_STATE["checking"] = True
+        UPDATE_STATE["last_error"] = ""
     try:
-        if channel == "email":
-            _send_email_invite(normalized_contact, tech_name, invite_link)
-        else:
-            _send_sms_invite(normalized_contact, tech_name, invite_link)
-        audit_entry["status"] = "sent"
-        _append_audit(audit_entry)
-        return jsonify({
-            "ok": True,
-            "inviteId": invite_token,
-            "techName": tech_name,
-            "identifier": normalized_contact,
-            "channel": channel
-        })
-    except ValueError as error:
-        audit_entry["status"] = "failed"
-        audit_entry["error"] = str(error)
-        _append_audit(audit_entry)
-        return jsonify({"error": str(error)}), 400
-    except Exception as error:
-        audit_entry["status"] = "failed"
-        audit_entry["error"] = str(error)
-        _append_audit(audit_entry)
-        return jsonify({"error": "Unexpected invite failure."}), 500
+        release = _fetch_latest_release(UPDATE_STATE["repo"])
+        with UPDATE_LOCK:
+            UPDATE_STATE["latest_version"] = release["version"]
+            UPDATE_STATE["release_name"] = release["release_name"]
+            UPDATE_STATE["release_notes"] = release["release_notes"]
+            UPDATE_STATE["asset_name"] = release["asset_name"]
+            UPDATE_STATE["asset_url"] = release["asset_url"]
+            UPDATE_STATE["available"] = _is_newer_version(release["version"], APP_VERSION)
+            UPDATE_STATE["last_checked"] = int(time.time())
+        if download_if_available and UPDATE_STATE["available"]:
+            downloaded_path = _download_update_asset(release["asset_name"], release["asset_url"], release["version"])
+            with UPDATE_LOCK:
+                UPDATE_STATE["downloaded_path"] = downloaded_path
+    except (ValueError, RuntimeError, OSError, URLError, TimeoutError, json.JSONDecodeError) as error:
+        _set_update_error(str(error))
+        return
+    with UPDATE_LOCK:
+        UPDATE_STATE["checking"] = False
 
 
-@app.route('/api/invites/test', methods=['POST'])
-def test_invite_provider():
-    channel = ((request.get_json(silent=True) or {}).get("channel") or "email").lower()
-    try:
-        if channel == "sms":
-            if not os.getenv("TWILIO_ACCOUNT_SID") or not os.getenv("TWILIO_AUTH_TOKEN") or not os.getenv("TWILIO_FROM_NUMBER"):
-                raise ValueError("Twilio configuration missing.")
-        else:
-            if not os.getenv("SMTP_HOST") or not os.getenv("EMAIL_FROM"):
-                raise ValueError("SMTP configuration missing.")
-        return jsonify({"ok": True, "channel": channel})
-    except ValueError as error:
-        return jsonify({"error": str(error)}), 400
+def background_update_loop():
+    while True:
+        check_for_updates(download_if_available=True)
+        time.sleep(AUTO_UPDATE_CHECK_INTERVAL_SECONDS)
 
 
-@app.route('/api/invites/<invite_id>', methods=['GET'])
-def get_invite(invite_id):
-    invite = _get_invite(invite_id)
-    if not invite:
-        return jsonify({"error": "Invite not found."}), 404
-    if invite.get("status") == "accepted":
-        return jsonify({"error": "Invite already used."}), 400
-    expires_at = invite.get("expiresAt")
-    if expires_at and datetime.fromisoformat(expires_at) < datetime.now(timezone.utc):
-        return jsonify({"error": "Invite expired."}), 400
+def launch_background_updater():
+    if not UPDATE_STATE["enabled"]:
+        app.logger.info("Auto-updater disabled. Set AUTO_UPDATE_REPO to enable OTA updates.")
+        return
+    thread = threading.Thread(target=background_update_loop, daemon=True)
+    thread.start()
+    app.logger.info("Background auto-updater enabled for repo %s", UPDATE_STATE["repo"])
+
+
+def get_update_status():
+    with UPDATE_LOCK:
+        return dict(UPDATE_STATE)
+
+
+def install_downloaded_update():
+    status = get_update_status()
+    pkg_path = status.get("downloaded_path") or ""
+    if not pkg_path or not Path(pkg_path).exists():
+        raise RuntimeError("No downloaded update package available.")
+    escaped_path = pkg_path.replace("\\", "\\\\").replace('"', '\\"')
+    script = (
+        'do shell script '
+        f'"installer -pkg \\"{escaped_path}\\" -target / && open \\"/Applications/NailQue.app\\"" '
+        "with administrator privileges"
+    )
+    process = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=False)
+    if process.returncode != 0:
+        stderr = (process.stderr or "").strip() or "Update installation failed."
+        raise RuntimeError(stderr)
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+@app.before_request
+def before_request_logging():
+    request._start_time = time.time()  # noqa: SLF001
+    request._request_id = uuid.uuid4().hex[:10]  # noqa: SLF001
+
+
+@app.after_request
+def add_security_headers(response):
+    duration_ms = int((time.time() - getattr(request, "_start_time", time.time())) * 1000)
+    request_id = getattr(request, "_request_id", "unknown")
+    app.logger.info("%s %s %s %sms id=%s", request.method, request.path, response.status_code, duration_ms, request_id)
+
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Request-Id"] = request_id
+    return response
+
+
+@app.errorhandler(404)
+def handle_not_found(error):  # noqa: ARG001
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Not found."}), 404
+    return send_from_directory(ASSETS_DIR, "luxe-nails-queue.html")
+
+
+@app.errorhandler(500)
+def handle_server_error(error):  # noqa: ARG001
+    app.logger.exception("Unhandled server error at %s", request.path)
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Internal server error."}), 500
+    return jsonify({"error": "Internal server error."}), 500
+
+
+@app.route("/api/health", methods=["GET"])
+def health():
     return jsonify({
         "ok": True,
-        "techName": invite.get("techName"),
-        "identifier": invite.get("contact"),
-        "channel": invite.get("channel")
+        "service": "nailque",
+        "version": APP_VERSION,
+        "runtime_dir": str(RUNTIME_DIR),
     })
 
 
-@app.route('/api/invites/accept', methods=['POST'])
-def accept_invite():
-    payload = request.get_json(silent=True) or {}
-    invite_id = str(payload.get("inviteId") or "")
-    password = str(payload.get("password") or "")
-    if not invite_id or len(password) < 4:
-        return jsonify({"error": "inviteId and password(min 4 chars) are required."}), 400
-
-    invite = _get_invite(invite_id)
-    if not invite:
-        return jsonify({"error": "Invite not found."}), 404
-    if invite.get("status") == "accepted":
-        return jsonify({"error": "Invite already used."}), 400
-    expires_at = invite.get("expiresAt")
-    if expires_at and datetime.fromisoformat(expires_at) < datetime.now(timezone.utc):
-        return jsonify({"error": "Invite expired."}), 400
-
-    updated = _update_invite(invite_id, lambda entry: entry.update({
-        "status": "accepted",
-        "acceptedAt": datetime.now(timezone.utc).isoformat()
-    }))
-    return jsonify({
-        "ok": True,
-        "techName": updated.get("techName"),
-        "identifier": updated.get("contact"),
-        "password": password
-    })
-
-
-@app.route('/api/manager/verify-pin', methods=['POST'])
+@app.route("/api/manager/verify-pin", methods=["POST"])
 def verify_manager_pin():
     entered = str((request.get_json(silent=True) or {}).get("pin") or "")
     manager_pin = _get_manager_pin()
     return jsonify({"ok": entered == manager_pin})
 
 
-@app.route('/api/manager/set-pin', methods=['POST'])
+@app.route("/api/manager/set-pin", methods=["POST"])
 def set_manager_pin():
     payload = request.get_json(silent=True) or {}
     current_pin = str(payload.get("currentPin") or "")
@@ -312,26 +355,110 @@ def set_manager_pin():
         return jsonify({"error": "New PIN must be at least 4 digits."}), 400
 
     _set_manager_pin(new_pin)
+    app.logger.info("Manager PIN updated")
     return jsonify({"ok": True})
 
-# Main Queue (TV/monitor) - accessed at http://YOUR-IP:5001/
-@app.route('/')
+
+@app.route("/api/update/status", methods=["GET"])
+def update_status():
+    return jsonify(get_update_status())
+
+
+@app.route("/api/update/check", methods=["POST"])
+def trigger_update_check():
+    threading.Thread(target=lambda: check_for_updates(download_if_available=True), daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/update/install", methods=["POST"])
+def install_update():
+    try:
+        install_downloaded_update()
+        return jsonify({"ok": True, "message": "Update installed. Relaunching NailQue..."})
+    except RuntimeError as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
+
+
+@app.route("/")
 def main_queue():
-    return send_from_directory('.', 'luxe-nails-queue.html')
+    return send_from_directory(ASSETS_DIR, "luxe-nails-queue.html")
 
-# Employee Portal (phones) - accessed at http://YOUR-IP:5001/employee
-@app.route('/employee')
+
+@app.route("/employee")
 def employee_portal():
-    return send_from_directory('.', 'luxe-nails-employee.html')
+    return send_from_directory(ASSETS_DIR, "luxe-nails-employee.html")
 
-# Allow serving any other files if needed (images, etc.)
-@app.route('/<path:path>')
+
+@app.route("/<path:path>")
 def serve_file(path):
-    return send_from_directory('.', path)
+    return send_from_directory(ASSETS_DIR, path)
 
-if __name__ == '__main__':
-    print("\n🚀 Luxe Nails Website Started on PORT 5001")
-    print("   Main Queue (TV)     → http://YOUR-IP:5001")
-    print("   Employee Portal     → http://YOUR-IP:5001/employee")
+
+def _wait_for_server(port: int, timeout_seconds: float = 12.0) -> bool:
+    deadline = time.time() + timeout_seconds
+    url = f"http://127.0.0.1:{port}/api/health"
+    while time.time() < deadline:
+        try:
+            with urlopen(url, timeout=1.0) as response:
+                if response.status == 200:
+                    return True
+        except Exception:
+            time.sleep(0.2)
+    return False
+
+
+def _launch_desktop_window(port: int) -> bool:
+    try:
+        import webview  # pywebview
+    except Exception:
+        app.logger.exception("pywebview is unavailable; falling back to browser mode")
+        return False
+
+    if not _wait_for_server(port):
+        app.logger.error("Server did not become ready for desktop window mode")
+        return False
+
+    webview.create_window(
+        "NailQue",
+        f"http://127.0.0.1:{port}/",
+        width=1480,
+        height=940,
+        min_size=(1100, 720),
+    )
+    webview.start()
+    return True
+
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "5001"))
+    host = "127.0.0.1"
+    auto_open_browser = _env_flag("AUTO_OPEN_BROWSER", True)
+    use_desktop_window = _env_flag("USE_DESKTOP_WINDOW", True)
+    dev_reload = _env_flag("DEV_RELOAD", False) and not getattr(sys, "frozen", False)
+    print("\n🚀 NailQue started")
+    print(f"   Queue           → http://localhost:{port}")
+    print(f"   Employee Portal → http://localhost:{port}/employee")
+    print(f"   Health          → http://localhost:{port}/api/health")
+    print(f"   Runtime dir     → {RUNTIME_DIR}")
+    print(f"   App version     → {APP_VERSION}")
+    if dev_reload:
+        print("   Dev reload      → enabled")
     print("   Press Ctrl+C to stop\n")
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    is_reloader_primary = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    if not dev_reload or is_reloader_primary:
+        launch_background_updater()
+    if getattr(sys, "frozen", False) and use_desktop_window:
+        server_thread = threading.Thread(
+            target=lambda: app.run(host=host, port=port, debug=False, use_reloader=False),
+            daemon=True,
+        )
+        server_thread.start()
+        desktop_opened = _launch_desktop_window(port)
+        if not desktop_opened:
+            if auto_open_browser:
+                threading.Timer(1.0, lambda: webbrowser.open(f"http://localhost:{port}/")).start()
+            server_thread.join()
+    else:
+        if auto_open_browser:
+            threading.Timer(1.2, lambda: webbrowser.open(f"http://localhost:{port}/")).start()
+        app.run(host=host, port=port, debug=dev_reload, use_reloader=dev_reload)
