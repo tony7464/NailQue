@@ -1,0 +1,55 @@
+# Build NailQue-macOS.pkg and publish a GitHub Release on every push to main
+# that touches luxe-nails/, so in-app OTA (releases/latest) can pick up new builds.
+#
+# Version embedded in the app: 1.0.<github.run_number> (monotonic vs repo VERSION file).
+# Tag: v1.0.<github.run_number>
+
+name: macOS OTA release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "luxe-nails/**"
+      - ".github/workflows/macos-ota.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: macos-ota-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Version, build installer
+        working-directory: luxe-nails
+        run: |
+          set -euo pipefail
+          VERSION="1.0.${GITHUB_RUN_NUMBER}"
+          echo "$VERSION" > VERSION
+          echo "Building version $VERSION"
+          bash build-mac.sh
+          test -f dist-installers/NailQue-macOS.pkg
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: NailQue v1.0.${{ github.run_number }}
+          files: luxe-nails/dist-installers/NailQue-macOS.pkg
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
