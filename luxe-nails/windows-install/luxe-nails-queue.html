@@ -112,18 +112,6 @@
             align-items: center;
             gap: 10px;
         }
-        .appt-badge {
-            display: inline-block;
-            margin-left: 8px;
-            padding: 2px 8px;
-            border-radius: 9999px;
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-            background: #6b4ca5;
-            color: #f5f0e8;
-            vertical-align: middle;
-        }
 
         .add-btn {
             background: linear-gradient(90deg, #d4af77, #c48b6f);
@@ -232,7 +220,6 @@
         .btn-small:active { transform: translateY(1px); }
 
         .scheduled { background: #6b4ca5; color: #f5f0e8; }
-        .on-break { background: #7a5a3a; color: #f5f0e8; }
 
         .toast {
             position: fixed;
@@ -371,18 +358,6 @@
             <div class="modal-title" style="color:#d4af77; font-size:28px; font-weight:700; margin-bottom:16px;">ADD NEW CUSTOMER</div>
             <label class="field-label" for="customerNameInput">Customer Name</label>
             <input id="customerNameInput" class="text-input" type="text" placeholder="Enter customer name" />
-            <label class="toggle-small" style="margin-top:-2px;">
-                <input type="checkbox" id="isAppointmentInput" onchange="toggleAppointmentFields()" style="margin-right:8px;vertical-align:middle;" />
-                Appointment
-            </label>
-            <div id="appointmentFields" style="display:none;">
-                <label class="field-label" for="appointmentTimeInput">Appointment Time</label>
-                <input id="appointmentTimeInput" class="text-input" type="time" />
-            </div>
-            <label class="field-label" for="requestedTechInput">Requested Nail Tech (Optional)</label>
-            <select id="requestedTechInput" class="select-input">
-                <option value="">No preference (next available)</option>
-            </select>
 
             <button onclick="submitAddCustomerModal()" style="width:100%;background:#d4af77;color:#1a1208;font-size:22px;font-weight:700;padding:16px;border:none;border-radius:9999px;cursor:pointer;margin-top:8px;margin-bottom:10px;">
                 ADD TO QUEUE
@@ -455,15 +430,6 @@
             <input id="currentManagerPinInput" class="text-input" type="password" placeholder="Current PIN" />
             <input id="newManagerPinInput" class="text-input" type="password" placeholder="New PIN (min 4 digits)" />
             <button onclick="changeManagerPin()" style="width:100%;background:#8f6bc4;color:#fff;font-size:16px;font-weight:700;padding:10px;border:none;border-radius:9999px;cursor:pointer;">UPDATE MANAGER PIN</button>
-
-            <div class="section-title">App Updates</div>
-            <div class="row" style="justify-content:flex-end;margin-bottom:8px;">
-                <button type="button" class="btn-small" style="background:#2d4f75;color:#f5f0e8;" onclick="checkForUpdatesNow()">CHECK NOW</button>
-                <button type="button" class="btn-small" style="background:#2d5b4a;color:#f5f0e8;" onclick="installLatestUpdate()">INSTALL UPDATE</button>
-            </div>
-            <div class="activity-log" style="margin-top:0;">
-                <div id="updateStatusPanel" style="color:#a58f6b;font-size:13px;">Checking update status...</div>
-            </div>
 
             <div class="section-title">Manager Activity</div>
             <div class="row" style="justify-content:flex-end;margin-bottom:8px;">
@@ -541,7 +507,6 @@
         let lastRemovedTechSnapshot = null;
         let bonusCycleQueue = [];
         let bonusCycleServed = [];
-        let latestUpdateStatus = null;
         const soundFx = {
             startup: "/assets/sounds/startup_fx.mp3",
             click: "/assets/sounds/click_fx.mp3",
@@ -711,68 +676,23 @@
             };
         }
 
-        function formatAppointmentLabel(timestampMs) {
-            if (!timestampMs) return "";
-            return new Date(timestampMs).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-        }
-
-        function getAvailableTechPriorityList() {
-            syncBonusCycleQueue();
-            const ordered = [];
-            bonusCycleQueue.forEach((name) => {
-                if (techs[name] && techs[name].status === "Available" && !ordered.includes(name)) {
-                    ordered.push(name);
-                }
-            });
-            Object.keys(techs)
-                .filter((name) => techs[name].status === "Available" && !ordered.includes(name))
-                .sort((a, b) => {
-                    const aTime = bonusClockIns[a] || Number.MAX_SAFE_INTEGER;
-                    const bTime = bonusClockIns[b] || Number.MAX_SAFE_INTEGER;
-                    return aTime - bTime;
-                })
-                .forEach((name) => ordered.push(name));
-            return ordered;
-        }
-
-        function findAssignableCustomerIndex(techName) {
-            const now = Date.now();
-            return waitingQueue.findIndex((customer) => {
-                const appointmentReady = !customer.appointmentTime || customer.appointmentTime <= now;
-                const matchesRequestedTech = !customer.requestedTech || customer.requestedTech === techName;
-                return appointmentReady && matchesRequestedTech;
-            });
-        }
-
         function autoAssign() {
-            if (waitingQueue.length === 0) {
+            const availableTech = getNextAvailableTechForAssignment();
+            if (!availableTech || waitingQueue.length === 0) {
                 renderQueue();
                 renderTechBoard();
                 return;
             }
-            let assignedAtLeastOne = false;
-            let availableTechs = getAvailableTechPriorityList();
-            while (waitingQueue.length > 0 && availableTechs.length > 0) {
-                let assignmentMadeThisPass = false;
-                for (const availableTech of availableTechs) {
-                    const customerIndex = findAssignableCustomerIndex(availableTech);
-                    if (customerIndex === -1) continue;
-                    const customer = waitingQueue.splice(customerIndex, 1)[0];
-                    techs[availableTech].status = "Busy";
-                    techs[availableTech].current = customer.name;
-                    techs[availableTech].startTime = Date.now();
-                    markBonusTurnUsed(availableTech);
-                    assignmentMadeThisPass = true;
-                    assignedAtLeastOne = true;
-                    break;
-                }
-                if (!assignmentMadeThisPass) break;
-                availableTechs = getAvailableTechPriorityList();
-            }
+
+            const customer = waitingQueue.shift();
+            techs[availableTech].status = "Busy";
+            techs[availableTech].current = customer.name;
+            techs[availableTech].startTime = Date.now();
+            markBonusTurnUsed(availableTech);
             saveQueueState();
             renderQueue();
             renderTechBoard();
-            if (!assignedAtLeastOne) return;
+            autoAssign();
         }
 
         function renderQueue() {
@@ -787,13 +707,9 @@
             queue.innerHTML = waitingQueue
                 .map((customer, idx) => {
                     const waitMins = Math.max(0, Math.round((Date.now() - customer.arrival) / 60000));
-                    const appointmentText = customer.appointmentTime ? ` • ${formatAppointmentLabel(customer.appointmentTime)}` : "";
-                    const requestedTechText = customer.requestedTech ? ` • Request: ${escapeHtml(customer.requestedTech)}` : "";
-                    const detailText = `${appointmentText}${requestedTechText}`;
-                    const appointmentBadge = customer.appointmentTime ? `<span class="appt-badge">APPT</span>` : "";
                     return `
                     <div class="queue-item">
-                        <div><strong>#${idx + 1}</strong> ${customer.name}${appointmentBadge}${detailText ? `<div style="font-size:12px;color:#a58f6b;margin-top:4px;">${detailText}</div>` : ""}</div>
+                        <div><strong>#${idx + 1}</strong> ${customer.name}</div>
                         <div style="color:#d4af77;">${waitMins} min</div>
                     </div>`;
                 })
@@ -803,9 +719,6 @@
         function statusBadgeForTech(tech) {
             if (tech.status === "Scheduled Appointment") {
                 return `<div class="status scheduled">SCHEDULED APPOINTMENT</div>`;
-            }
-            if (tech.status === "On Break") {
-                return `<div class="status on-break">ON BREAK</div>`;
             }
             if (tech.status === "Available") return `<div class="status available">AVAILABLE</div>`;
             if (tech.status === "Busy") {
@@ -838,9 +751,7 @@
                     <div class="buttons">
                         <button class="btn" onclick="signInTech('${name}')" style="background:#d4af77;color:#1a1208;">READY</button>
                         <button class="btn" onclick="unreadyTech('${name}')" style="background:#4a3f35;color:#f5f0e8;">UNREADY</button>
-                        <button class="btn" onclick="toggleTechBreak('${name}')" style="background:#7a5a3a;color:#f5f0e8;">${t.status === "On Break" ? "END BREAK" : "BREAK"}</button>
-                        <button class="btn" onclick="skipNextForTech('${name}')" style="background:#3f566f;color:#f5f0e8;">SKIP NEXT</button>
-                        <button class="btn" onclick="finishTech('${name}')" style="background:#c48b6f;color:#fff;">FINISH CUSTOMER</button>
+                        <button class="btn" onclick="finishTech('${name}')" style="background:#c48b6f;color:#fff;">FINISH</button>
                     </div>
                 </div>`;
             });
@@ -940,91 +851,6 @@
             managerActivityLog = managerActivityLog.slice(0, 80);
             localStorage.setItem(managerActivityLogKey, JSON.stringify(managerActivityLog));
             renderManagerActivityLog();
-        }
-
-        function formatUpdateTimestamp(unixSeconds) {
-            if (!unixSeconds) return "Never";
-            return new Date(unixSeconds * 1000).toLocaleString();
-        }
-
-        function renderUpdateStatusPanel(status) {
-            const panel = document.getElementById("updateStatusPanel");
-            if (!panel) return;
-            if (!status) {
-                panel.innerHTML = `<div style="color:#a58f6b;">Update status unavailable.</div>`;
-                return;
-            }
-            const enabled = !!status.enabled;
-            const available = !!status.available;
-            const downloaded = !!status.downloaded_path;
-            const checking = !!status.checking;
-            const error = status.last_error ? escapeHtml(status.last_error) : "";
-            const latest = escapeHtml(status.latest_version || "unknown");
-            const current = escapeHtml(status.current_version || "unknown");
-            const repo = escapeHtml(status.repo || "not configured");
-            const downloadedPath = downloaded ? escapeHtml(status.downloaded_path) : "";
-            const checkedAt = formatUpdateTimestamp(status.last_checked);
-            panel.innerHTML = `
-                <div style="color:#f5f0e8;"><strong>Current:</strong> ${current}</div>
-                <div style="color:#f5f0e8;"><strong>Latest:</strong> ${latest}</div>
-                <div style="color:#a58f6b;"><strong>Repo:</strong> ${repo}</div>
-                <div style="color:${enabled ? "#d4af77" : "#ffb3b3"};"><strong>Updater:</strong> ${enabled ? "Enabled" : "Disabled"}</div>
-                <div style="color:${available ? "#d4af77" : "#a58f6b"};"><strong>Status:</strong> ${checking ? "Checking..." : (available ? "Update available" : "Up to date")}</div>
-                <div style="color:${downloaded ? "#d4af77" : "#a58f6b"};"><strong>Package:</strong> ${downloaded ? "Downloaded" : "Not downloaded yet"}</div>
-                ${downloaded ? `<div style="color:#a58f6b;font-size:12px;"><strong>Path:</strong> ${downloadedPath}</div>` : ""}
-                <div style="color:#a58f6b;font-size:12px;"><strong>Last check:</strong> ${escapeHtml(checkedAt)}</div>
-                ${error ? `<div style="color:#ffd9d9;font-size:12px;"><strong>Error:</strong> ${error}</div>` : ""}
-            `;
-        }
-
-        async function fetchUpdateStatus(showErrors) {
-            try {
-                const response = await fetch("/api/update/status");
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.error || "Could not load update status.");
-                }
-                latestUpdateStatus = data;
-                renderUpdateStatusPanel(data);
-                if (data.available && data.downloaded_path) {
-                    showActionToast(`Update ${data.latest_version} is ready to install.`, false);
-                }
-            } catch (error) {
-                if (showErrors) {
-                    showActionToast(error.message || "Update status request failed.", true);
-                }
-            }
-        }
-
-        async function checkForUpdatesNow() {
-            try {
-                const response = await fetch("/api/update/check", { method: "POST" });
-                const data = await response.json();
-                if (!response.ok || !data.ok) {
-                    throw new Error(data.error || "Could not start update check.");
-                }
-                showActionToast("Checking for updates...", false);
-                setTimeout(() => fetchUpdateStatus(false), 1200);
-            } catch (error) {
-                showActionToast(error.message || "Update check failed.", true);
-            }
-        }
-
-        async function installLatestUpdate() {
-            try {
-                const proceed = confirm("Install latest downloaded update now? macOS may ask for admin password.");
-                if (!proceed) return;
-                const response = await fetch("/api/update/install", { method: "POST" });
-                const data = await response.json();
-                if (!response.ok || !data.ok) {
-                    throw new Error(data.error || "Install failed.");
-                }
-                showActionToast(data.message || "Update installed.", false);
-                addManagerActivity(`Installed app update ${latestUpdateStatus && latestUpdateStatus.latest_version ? latestUpdateStatus.latest_version : ""}.`, "success");
-            } catch (error) {
-                showActionToast(error.message || "Could not install update.", true);
-                addManagerActivity("Failed app update install attempt.", "error");
-            }
         }
 
         function renderManagerActivityLog() {
@@ -1160,7 +986,6 @@
             document.getElementById("bonusEndInput").value = bonusSettings.end;
             renderManagerTechList();
             renderManagerActivityLog();
-            fetchUpdateStatus(false);
             showManagerMessage("");
             document.getElementById("currentManagerPinInput").value = "";
             document.getElementById("newManagerPinInput").value = "";
@@ -1583,68 +1408,8 @@
             addManagerActivity(`${name} set themselves to Offline (unready).`, "success");
         }
 
-        function toggleTechBreak(name) {
-            const tech = techs[name];
-            if (!tech) return;
-            if (tech.status === "Busy") {
-                showActionToast(`${name} is serving a customer and cannot start a break.`, true);
-                return;
-            }
-            if (tech.status === "On Break") {
-                tech.status = "Available";
-                if (!bonusClockIns[name]) {
-                    bonusClockIns[name] = Date.now();
-                    localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
-                }
-                saveQueueState();
-                showActionToast(`${name} is back from break.`, false);
-                autoAssign();
-                return;
-            }
-            tech.status = "On Break";
-            tech.current = null;
-            tech.startTime = null;
-            bonusCycleQueue = bonusCycleQueue.filter((n) => n !== name);
-            saveQueueState();
-            renderTechBoard();
-            showActionToast(`${name} is now on break.`, false);
-        }
-
-        function skipNextForTech(name) {
-            const tech = techs[name];
-            if (!tech || tech.status !== "Available") {
-                showActionToast(`${name} must be available to skip a turn.`, true);
-                return;
-            }
-            if (waitingQueue.length === 0) {
-                showActionToast("No waiting customers to skip.", true);
-                return;
-            }
-            const nextTech = getNextAvailableTechForAssignment();
-            if (nextTech !== name) {
-                showActionToast(`${name} is not next in rotation right now.`, true);
-                return;
-            }
-            const hasAssignableCustomer = findAssignableCustomerIndex(name) !== -1;
-            if (!hasAssignableCustomer) {
-                showActionToast(`${name} has no assignable customer to skip right now.`, true);
-                return;
-            }
-            const latestClockIn = Math.max(...Object.keys(techs).map((techName) => bonusClockIns[techName] || 0), 0);
-            bonusClockIns[name] = latestClockIn + 1;
-            localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
-            syncBonusCycleQueue();
-            saveQueueState();
-            autoAssign();
-            showActionToast(`${name} skipped this turn.`, false);
-        }
-
         function openAddCustomerModal() {
             document.getElementById("customerNameInput").value = "";
-            document.getElementById("isAppointmentInput").checked = false;
-            document.getElementById("appointmentTimeInput").value = "";
-            populateRequestedTechOptions();
-            toggleAppointmentFields();
             document.getElementById("addCustomerModal").style.display = "flex";
             setTimeout(() => document.getElementById("customerNameInput").focus(), 0);
         }
@@ -1655,57 +1420,16 @@
 
         function submitAddCustomerModal() {
             const name = document.getElementById("customerNameInput").value.trim();
-            const isAppointment = document.getElementById("isAppointmentInput").checked;
-            const appointmentTimeValue = document.getElementById("appointmentTimeInput").value;
-            const requestedTech = document.getElementById("requestedTechInput").value;
             if (!name) {
                 alert("Please enter customer name.");
                 return;
             }
-            if (isAppointment && !appointmentTimeValue) {
-                alert("Please enter appointment time.");
-                return;
-            }
-            let appointmentTime = null;
-            if (isAppointment && appointmentTimeValue) {
-                const [h, m] = appointmentTimeValue.split(":").map((v) => parseInt(v, 10));
-                const appointmentDate = new Date();
-                appointmentDate.setHours(h, m, 0, 0);
-                appointmentTime = appointmentDate.getTime();
-            }
-            waitingQueue.push({
-                id: nextCustomerId++,
-                name,
-                arrival: Date.now(),
-                appointmentTime,
-                requestedTech: requestedTech || ""
-            });
+            waitingQueue.push({ id: nextCustomerId++, name, arrival: Date.now() });
             saveQueueState();
             closeAddCustomerModal();
             autoAssign();
             renderQueue();
-            showActionToast(`${name} added to queue${appointmentTime ? ` for ${formatAppointmentLabel(appointmentTime)}` : ""}.`, false);
-        }
-
-        function toggleAppointmentFields() {
-            const isAppointment = document.getElementById("isAppointmentInput").checked;
-            const wrapper = document.getElementById("appointmentFields");
-            wrapper.style.display = isAppointment ? "block" : "none";
-        }
-
-        function populateRequestedTechOptions() {
-            const select = document.getElementById("requestedTechInput");
-            const previous = select.value;
-            let options = `<option value="">No preference (next available)</option>`;
-            Object.keys(techs).forEach((techName) => {
-                options += `<option value="${escapeHtml(techName)}">${escapeHtml(techName)}</option>`;
-            });
-            select.innerHTML = options;
-            if (Object.keys(techs).includes(previous)) {
-                select.value = previous;
-            } else {
-                select.value = "";
-            }
+            showActionToast(`${name} added to queue.`, false);
         }
 
         function saveServiceRecord(record) {
@@ -1722,13 +1446,7 @@
             const saved = JSON.parse(localStorage.getItem(queueStateKey) || "null");
             if (!saved) return;
             if (saved.techs && typeof saved.techs === "object") techs = saved.techs;
-            if (Array.isArray(saved.waitingQueue)) {
-                waitingQueue = saved.waitingQueue.map((customer) => ({
-                    ...customer,
-                    appointmentTime: customer.appointmentTime || null,
-                    requestedTech: customer.requestedTech || ""
-                }));
-            }
+            if (Array.isArray(saved.waitingQueue)) waitingQueue = saved.waitingQueue;
             if (Number.isInteger(saved.nextCustomerId)) nextCustomerId = saved.nextCustomerId;
         }
 
@@ -1837,12 +1555,8 @@
                 renderTechBoard();
                 renderQueue();
             }, 1000);
-            setInterval(() => {
-                fetchUpdateStatus(false);
-            }, 30000);
             updateClock();
             setupSoundEffects();
-            fetchUpdateStatus(false);
             setTimeout(() => playSoundEffect("startup"), 220);
             console.log("%c✅ M. VINCÉ Nail Spa Queue System Ready with Tech Management", "color:#d4af77;font-size:18px");
         }
