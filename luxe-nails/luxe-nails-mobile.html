@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NailQue Tech Mobile</title>
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; background: #12100d; color: #f4efe5; }
+        .wrap { max-width: 640px; margin: 0 auto; padding: 16px; }
+        .card { background: #1f1914; border: 1px solid #3d2a1f; border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+        .title { color: #d4af77; font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+        .subtitle { color: #a58f6b; font-size: 13px; margin-bottom: 10px; }
+        .input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #3d2a1f; background: #2a221b; color: #f4efe5; margin-bottom: 10px; box-sizing: border-box; }
+        .btn { width: 100%; border: none; border-radius: 999px; padding: 12px; font-weight: 700; cursor: pointer; margin-bottom: 8px; }
+        .btn-primary { background: #d4af77; color: #1a1208; }
+        .btn-muted { background: #3d2a1f; color: #f4efe5; }
+        .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .status-pill { display: inline-block; padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 13px; }
+        .Available { background: #d4af77; color: #1a1208; }
+        .Busy { background: #c48b6f; color: #fff; }
+        .Offline { background: #4a3f35; color: #d4af77; }
+        .On\ Break { background: #7a5a3a; color: #fff; }
+        .queue-item { border-bottom: 1px solid #3d2a1f; padding: 8px 0; font-size: 14px; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="card" id="loginCard">
+            <div class="title">Tech Mobile Login</div>
+            <div class="subtitle">Only available on the same local network as NailQue host.</div>
+            <input id="identifierInput" class="input" type="text" placeholder="Login ID">
+            <input id="passwordInput" class="input" type="password" placeholder="Password">
+            <button class="btn btn-primary" onclick="login()">LOGIN</button>
+            <div id="loginError" style="color:#ffb3b3;font-size:13px;"></div>
+        </div>
+
+        <div class="card hidden" id="appCard">
+            <div class="title">NailQue Tech</div>
+            <div class="subtitle" id="techNameLabel"></div>
+            <div id="techStatus"></div>
+            <div style="margin-top:10px;" class="btn-row">
+                <button class="btn btn-primary" onclick="sendAction('clock_in')">CLOCK IN</button>
+                <button class="btn btn-muted" onclick="sendAction('unready')">UNREADY</button>
+                <button class="btn btn-muted" onclick="sendAction('break')">START BREAK</button>
+                <button class="btn btn-primary" onclick="sendAction('end_break')">END BREAK</button>
+                <button class="btn btn-primary" onclick="sendAction('finish_customer')" style="grid-column:1 / span 2;">FINISH CUSTOMER</button>
+            </div>
+        </div>
+
+        <div class="card hidden" id="queueCard">
+            <div class="title">Current Queue</div>
+            <div id="queueList"></div>
+        </div>
+    </div>
+
+    <script>
+        let authToken = localStorage.getItem("mobileTechToken") || "";
+        let techName = localStorage.getItem("mobileTechName") || "";
+
+        function showLogin(show) {
+            document.getElementById("loginCard").classList.toggle("hidden", !show);
+            document.getElementById("appCard").classList.toggle("hidden", show);
+            document.getElementById("queueCard").classList.toggle("hidden", show);
+        }
+
+        function statusClass(status) {
+            return String(status || "Offline").replace(/\s+/g, "\\ ");
+        }
+
+        function renderState(payload) {
+            techName = payload.tech || techName || "Tech";
+            localStorage.setItem("mobileTechName", techName);
+            document.getElementById("techNameLabel").textContent = `Logged in as ${techName}`;
+            const status = payload.techState && payload.techState.status ? payload.techState.status : "Offline";
+            const current = payload.techState && payload.techState.current ? payload.techState.current : "";
+            document.getElementById("techStatus").innerHTML = `<span class="status-pill ${statusClass(status)}">${status.toUpperCase()}</span>${current ? ` <span style="color:#a58f6b;">• ${current}</span>` : ""}`;
+            const queue = Array.isArray(payload.waitingQueue) ? payload.waitingQueue : [];
+            const queueList = document.getElementById("queueList");
+            if (!queue.length) {
+                queueList.innerHTML = `<div style="color:#a58f6b;">No customers waiting.</div>`;
+                return;
+            }
+            queueList.innerHTML = queue.map((customer, idx) => {
+                const requested = customer.requestedTech ? ` • request ${customer.requestedTech}` : "";
+                return `<div class="queue-item"><strong>#${idx + 1}</strong> ${customer.name}${requested}</div>`;
+            }).join("");
+        }
+
+        async function login() {
+            const identifier = document.getElementById("identifierInput").value.trim();
+            const password = document.getElementById("passwordInput").value;
+            document.getElementById("loginError").textContent = "";
+            try {
+                const response = await fetch("/api/mobile/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ identifier, password })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) throw new Error(data.error || "Login failed.");
+                authToken = data.token;
+                techName = data.tech || "";
+                localStorage.setItem("mobileTechToken", authToken);
+                localStorage.setItem("mobileTechName", techName);
+                showLogin(false);
+                await refreshState();
+            } catch (error) {
+                document.getElementById("loginError").textContent = error.message || "Login failed.";
+            }
+        }
+
+        async function refreshState() {
+            if (!authToken) {
+                showLogin(true);
+                return;
+            }
+            const response = await fetch("/api/mobile/state", {
+                headers: { Authorization: `Bearer ${authToken}` }
+            });
+            const data = await response.json();
+            if (!response.ok || !data.ok) {
+                localStorage.removeItem("mobileTechToken");
+                authToken = "";
+                showLogin(true);
+                return;
+            }
+            showLogin(false);
+            renderState(data);
+        }
+
+        async function sendAction(action) {
+            if (!authToken) return;
+            try {
+                const response = await fetch("/api/mobile/action", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ action })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) throw new Error(data.error || "Action failed.");
+                await refreshState();
+            } catch (error) {
+                alert(error.message || "Action failed.");
+            }
+        }
+
+        refreshState();
+        setInterval(refreshState, 4000);
+    </script>
+</body>
+</html>

@@ -10,6 +10,7 @@ def build() -> int:
     add_data = [
         f"luxe-nails-queue.html{sep}.",
         f"luxe-nails-employee.html{sep}.",
+        f"luxe-nails-mobile.html{sep}.",
         f"VERSION{sep}.",
         f".env.example{sep}.",
         f"BUILD_EXECUTABLES.md{sep}.",
