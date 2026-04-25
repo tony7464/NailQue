@@ -736,12 +736,23 @@ def mobile_state():
         return jsonify({"ok": False, "error": "Unauthorized."}), 401
     state = _safe_copy_shared_state()
     techs = state.get("techs") or {}
+    bonus_clock_ins = state.get("bonusClockIns") or {}
+    bonus_order = [
+        name for name in sorted(
+            [name for name, details in techs.items() if str((details or {}).get("status") or "Offline") == "Available"],
+            key=lambda name: int(bonus_clock_ins.get(name) or (10**15)),
+        )
+    ]
+    bonus_position_map = {name: idx + 1 for idx, name in enumerate(bonus_order)}
+    bonus_current = bonus_order[0] if bonus_order else ""
     techs_overview = [
         {
             "name": name,
             "status": str((details or {}).get("status") or "Offline"),
             "current": str((details or {}).get("current") or ""),
             "startTime": (details or {}).get("startTime"),
+            "hasBonusRound": bool(name == bonus_current),
+            "bonusQueuePosition": int(bonus_position_map.get(name) or 0),
         }
         for name, details in techs.items()
     ]
