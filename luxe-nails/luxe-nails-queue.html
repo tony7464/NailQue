@@ -303,6 +303,11 @@
             border-radius: 9999px;
             cursor: pointer;
         }
+        .nav-pill-btn.update-ready {
+            background: #2d5b4a;
+            border-color: #2d5b4a;
+            color: #f5f0e8;
+        }
         .service-row {
             display: flex;
             justify-content: space-between;
@@ -371,6 +376,7 @@
         <div class="footer-controls">
             <button class="nav-pill-btn" onclick="window.location.href='/employee'">EMPLOYEE PORTAL</button>
             <button class="nav-pill-btn" onclick="openMobileAccessModal()">TECH MOBILE QR</button>
+            <button id="quickUpdateBtn" class="nav-pill-btn" onclick="runOneTapUpdateFlow()">CHECK UPDATES</button>
             <button class="nav-pill-btn" onclick="toggleTheme()">THEME</button>
             <button class="nav-pill-btn" onclick="openManagerAccess()">TECH MANAGEMENT</button>
             <button onclick="toggleFullscreen()" style="background:none;border:none;color:#d4af77;font-size:22px;cursor:pointer">⛶ FULLSCREEN</button>
@@ -1055,6 +1061,15 @@
                 <div style="color:#a58f6b;font-size:12px;"><strong>Last check:</strong> ${escapeHtml(checkedAt)}</div>
                 ${error ? `<div style="color:#ffd9d9;font-size:12px;"><strong>Error:</strong> ${error}</div>` : ""}
             `;
+            refreshQuickUpdateButton(status);
+        }
+
+        function refreshQuickUpdateButton(status) {
+            const btn = document.getElementById("quickUpdateBtn");
+            if (!btn) return;
+            const ready = !!(status && status.available && status.downloaded_path);
+            btn.classList.toggle("update-ready", ready);
+            btn.textContent = ready ? "UPDATE READY" : "CHECK UPDATES";
         }
 
         async function fetchUpdateStatus(showErrors) {
@@ -1087,6 +1102,39 @@
                 setTimeout(() => fetchUpdateStatus(false), 1200);
             } catch (error) {
                 showActionToast(error.message || "Update check failed.", true);
+            }
+        }
+
+        async function runOneTapUpdateFlow() {
+            try {
+                showActionToast("Checking for updates...", false);
+                const checkResponse = await fetch("/api/update/check-sync", { method: "POST" });
+                const checkData = await checkResponse.json();
+                if (!checkResponse.ok || !checkData.ok) {
+                    throw new Error(checkData.error || "Could not check updates.");
+                }
+                const status = checkData.status || {};
+                latestUpdateStatus = status;
+                renderUpdateStatusPanel(status);
+                if (!status.available) {
+                    showActionToast("App is already up to date.", false);
+                    return;
+                }
+                if (!status.downloaded_path) {
+                    showActionToast("Update found but package is not downloaded yet. Try again in a moment.", true);
+                    return;
+                }
+                const proceed = confirm(`Update ${status.latest_version || "available"} is ready. Install now and restart app?`);
+                if (!proceed) return;
+                const installResponse = await fetch("/api/update/install", { method: "POST" });
+                const installData = await installResponse.json();
+                if (!installResponse.ok || !installData.ok) {
+                    throw new Error(installData.error || "Install failed.");
+                }
+                showActionToast(installData.message || "Installing update and restarting app...", false);
+                addManagerActivity(`Installed app update ${status.latest_version || ""} from quick update action.`, "success");
+            } catch (error) {
+                showActionToast(error.message || "Update flow failed.", true);
             }
         }
 
