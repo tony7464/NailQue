@@ -24,6 +24,11 @@
         .service-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #3d2a1f; }
         .service-row:last-child { border-bottom: none; }
         .tiny { color: #a58f6b; font-size: 12px; }
+        .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+        .metric { background: #2a221b; border: 1px solid #3d2a1f; border-radius: 10px; padding: 10px; text-align: center; }
+        .metric-label { color: #a58f6b; font-size: 12px; }
+        .metric-value { color: #d4af77; font-size: 22px; font-weight: 700; }
+        .bonus-tag { color: #d4af77; font-weight: 700; margin-left: 6px; }
         .hidden { display: none; }
     </style>
 </head>
@@ -57,8 +62,14 @@
         </div>
         <div class="card hidden" id="techOrderCard">
             <div class="title">Tech Queue Order</div>
-            <div class="subtitle">Shows who is available/busy and current customer.</div>
+            <div class="subtitle">Shows each tech status, current customer, and bonus round order.</div>
             <div id="techOrderList"></div>
+        </div>
+        <div class="card hidden" id="employeeStatsCard">
+            <div class="title">My Weekly Performance</div>
+            <div class="subtitle">Same totals shown in the Employee Portal.</div>
+            <div id="employeeStatsGrid" class="metric-grid"></div>
+            <div id="employeeDailyBreakdown" style="margin-top:8px;"></div>
         </div>
         <div class="card hidden" id="serviceCard">
             <div class="title">Complete Service</div>
@@ -82,6 +93,7 @@
             document.getElementById("appCard").classList.toggle("hidden", show);
             document.getElementById("queueCard").classList.toggle("hidden", show);
             document.getElementById("techOrderCard").classList.toggle("hidden", show);
+            document.getElementById("employeeStatsCard").classList.toggle("hidden", show);
             document.getElementById("serviceCard").classList.toggle("hidden", show);
             document.getElementById("historyCard").classList.toggle("hidden", show);
         }
@@ -110,6 +122,7 @@
                 }).join("");
             }
             renderTechOrder(payload.techsOverview || []);
+            renderEmployeeStats(payload.serviceHistory || []);
             renderServiceSelector();
             renderHistory(payload.serviceHistory || []);
         }
@@ -123,8 +136,51 @@
             list.innerHTML = techsOverview.map((item) => {
                 const status = item.status || "Offline";
                 const current = item.current ? ` • ${item.current}` : "";
-                return `<div class="queue-item"><strong>${item.name}</strong> <span class="status-pill ${statusClass(status)}">${status}</span><span class="tiny">${current}</span></div>`;
+                const bonus = item.hasBonusRound ? `<span class="bonus-tag">★ BONUS ROUND</span>` : "";
+                const bonusQueue = item.bonusQueuePosition ? ` • bonus #${item.bonusQueuePosition}` : "";
+                return `<div class="queue-item"><strong>${item.name}</strong> <span class="status-pill ${statusClass(status)}">${status}</span>${bonus}<div class="tiny">${current || " • no current customer"}${bonusQueue}</div></div>`;
             }).join("");
+        }
+
+        function getEmployeeWeekRecords(records, selectedTech) {
+            const allRecords = Array.isArray(records) ? records : [];
+            const now = new Date();
+            const start = new Date(now);
+            start.setHours(0, 0, 0, 0);
+            start.setDate(start.getDate() - 6);
+            return allRecords.filter((record) => {
+                if (!record || record.tech !== selectedTech || !record.completedAt) return false;
+                const completed = new Date(record.completedAt);
+                return completed >= start && completed <= now;
+            });
+        }
+
+        function renderEmployeeStats(records) {
+            const statsGrid = document.getElementById("employeeStatsGrid");
+            const daily = document.getElementById("employeeDailyBreakdown");
+            const mine = getEmployeeWeekRecords(records, techName);
+            const totalCustomers = mine.length;
+            const totalEarnings = mine.reduce((sum, item) => sum + Number(item.employeeShare || 0), 0);
+            statsGrid.innerHTML = `
+                <div class="metric"><div class="metric-label">THIS WEEK</div><div class="metric-value">${totalCustomers}</div><div class="tiny">Customers Served</div></div>
+                <div class="metric"><div class="metric-label">EST. EARNINGS</div><div class="metric-value">$${totalEarnings.toFixed(2)}</div><div class="tiny">60% of services</div></div>
+            `;
+            if (!mine.length) {
+                daily.innerHTML = `<div class="tiny">No completed services this week yet.</div>`;
+                return;
+            }
+            const byDay = {};
+            mine.forEach((record) => {
+                const key = new Date(record.completedAt).toLocaleDateString("en-US", { weekday: "short" });
+                if (!byDay[key]) byDay[key] = { customers: 0, earnings: 0 };
+                byDay[key].customers += 1;
+                byDay[key].earnings += Number(record.employeeShare || 0);
+            });
+            const orderedWeekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            daily.innerHTML = orderedWeekdays
+                .filter((day) => byDay[day])
+                .map((day) => `<div class="queue-item"><strong>${day}</strong><span class="tiny"> • ${byDay[day].customers} customers • $${byDay[day].earnings.toFixed(2)}</span></div>`)
+                .join("");
         }
 
         function renderServiceSelector() {
