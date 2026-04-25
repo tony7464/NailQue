@@ -569,7 +569,6 @@
         const serviceRecordsKey = "mvServiceRecords";
         const bonusSettingsKey = "mvBonusSettings";
         const bonusClockInsKey = "mvBonusClockIns";
-        const managerSessionKey = "mvManagerSession";
         const managerActivityLogKey = "mvManagerActivityLog";
         const queueThemeKey = "mvQueueTheme";
 
@@ -794,10 +793,11 @@
             try {
                 const response = await fetch("/api/shared/state");
                 const data = await response.json();
-                if (!response.ok || !data.ok || !data.state) return;
+                if (!response.ok || !data.ok || !data.state) return false;
                 applySharedStateFromServer(data.state);
+                return true;
             } catch (error) {
-                // no-op
+                return false;
             }
         }
 
@@ -1346,27 +1346,24 @@
         }
 
         async function openManagerAccess() {
-            if (sessionStorage.getItem(managerSessionKey) !== "unlocked") {
-                const entered = prompt("Enter Manager PIN:");
-                if (!entered) {
+            const entered = prompt("Enter Manager PIN:");
+            if (!entered) {
+                return;
+            }
+            try {
+                const response = await fetch("/api/manager/verify-pin", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ pin: entered })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    alert("Invalid PIN.");
                     return;
                 }
-                try {
-                    const response = await fetch("/api/manager/verify-pin", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ pin: entered })
-                    });
-                    const data = await response.json();
-                    if (!response.ok || !data.ok) {
-                        alert("Invalid PIN.");
-                        return;
-                    }
-                } catch (error) {
-                    alert("Could not verify manager PIN.");
-                    return;
-                }
-                sessionStorage.setItem(managerSessionKey, "unlocked");
+            } catch (error) {
+                alert("Could not verify manager PIN.");
+                return;
             }
             document.getElementById("bonusStartInput").value = bonusSettings.start;
             document.getElementById("bonusEndInput").value = bonusSettings.end;
@@ -2029,12 +2026,14 @@
             clock.textContent = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
         }
 
-        function init() {
+        async function init() {
             loadQueueState();
             loadBonusSettings();
+            const loadedFromServer = await fetchSharedStateFromServer();
             initializeSharedTechConfig();
-            syncSharedStateToServer();
-            fetchSharedStateFromServer();
+            if (!loadedFromServer) {
+                syncSharedStateToServer();
+            }
             const savedTheme = localStorage.getItem(queueThemeKey);
             if (savedTheme === "light") document.body.classList.add("light-theme");
             renderTechBoard();
