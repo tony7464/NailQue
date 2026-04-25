@@ -531,9 +531,11 @@ def install_downloaded_update():
     if not pkg_path or not Path(pkg_path).exists():
         raise RuntimeError("No downloaded update package available.")
     escaped_path = pkg_path.replace("\\", "\\\\").replace('"', '\\"')
+    # Ensure we relaunch the newly-installed binary, not an already-running old process.
     script = (
         'do shell script '
-        f'"installer -pkg \\"{escaped_path}\\" -target / && open \\"/Applications/NailQue.app\\"" '
+        f'"installer -pkg \\"{escaped_path}\\" -target / && (pkill -x NailQue || true) && '
+        f'sleep 1 && open \\"/Applications/NailQue.app\\"" '
         "with administrator privileges"
     )
     process = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=False)
@@ -740,7 +742,45 @@ def mobile_login():
         "ip": _request_client_ip(),
         "expiresAt": int(time.time()) + MOBILE_SESSION_TTL_SECONDS,
     }
-    return jsonify({"ok": True, "token": token, "tech": matched_tech})
+    matched_cred = credentials.get(matched_tech) or {}
+    return jsonify({
+        "ok": True,
+        "token": token,
+        "tech": matched_tech,
+        "mustChangePassword": bool(matched_cred.get("mustChangePassword")),
+    })
+
+
+@app.route("/api/tech/change-password", methods=["POST"])
+def employee_change_password():
+    payload = request.get_json(silent=True) or {}
+    identifier = str(payload.get("identifier") or "").strip().lower()
+    current_password = str(payload.get("currentPassword") or "")
+    new_password = str(payload.get("newPassword") or "").strip()
+    if not identifier or not current_password or not new_password:
+        return jsonify({"ok": False, "error": "Identifier, current password, and new password are required."}), 400
+    if len(new_password) < 4:
+        return jsonify({"ok": False, "error": "New password must be at least 4 characters."}), 400
+    if new_password == current_password:
+        return jsonify({"ok": False, "error": "New password must be different from current password."}), 400
+
+    with SHARED_STATE_LOCK:
+        credentials = dict(SHARED_STATE.get("credentials") or {})
+        matched_tech = None
+        for tech_name, cred in credentials.items():
+            saved_identifier = str((cred or {}).get("identifier") or "").strip().lower()
+            saved_password = str((cred or {}).get("password") or "")
+            if identifier == saved_identifier and current_password == saved_password:
+                matched_tech = tech_name
+                break
+        if not matched_tech:
+            return jsonify({"ok": False, "error": "Current credentials are incorrect."}), 401
+        credentials[matched_tech] = credentials.get(matched_tech) or {}
+        credentials[matched_tech]["password"] = new_password
+        credentials[matched_tech]["mustChangePassword"] = False
+        SHARED_STATE["credentials"] = credentials
+    _persist_shared_state()
+    return jsonify({"ok": True, "tech": matched_tech})
 
 
 @app.route("/api/mobile/state", methods=["GET"])
@@ -778,11 +818,45 @@ def mobile_state():
         "ok": True,
         "tech": session.get("tech"),
         "techState": techs.get(session.get("tech")) or {},
+        "mustChangePassword": bool(((state.get("credentials") or {}).get(session.get("tech")) or {}).get("mustChangePassword")),
         "waitingQueue": state.get("waitingQueue") or [],
         "techsOverview": techs_overview,
         "servicesMenu": SERVICES_MENU,
         "serviceHistory": _read_service_history()[-80:],
     })
+
+
+@app.route("/api/mobile/change-password", methods=["POST"])
+def mobile_change_password():
+    blocked = _mobile_requires_lan()
+    if blocked:
+        return blocked
+    session = _resolve_mobile_session()
+    if not session:
+        return jsonify({"ok": False, "error": "Unauthorized."}), 401
+    payload = request.get_json(silent=True) or {}
+    current_password = str(payload.get("currentPassword") or "")
+    new_password = str(payload.get("newPassword") or "").strip()
+    if not current_password or not new_password:
+        return jsonify({"ok": False, "error": "Current and new password are required."}), 400
+    if len(new_password) < 4:
+        return jsonify({"ok": False, "error": "New password must be at least 4 characters."}), 400
+    if new_password == current_password:
+        return jsonify({"ok": False, "error": "New password must be different from current password."}), 400
+
+    tech_name = session.get("tech")
+    with SHARED_STATE_LOCK:
+        credentials = dict(SHARED_STATE.get("credentials") or {})
+        current_cred = credentials.get(tech_name) or {}
+        saved_password = str(current_cred.get("password") or "")
+        if current_password != saved_password:
+            return jsonify({"ok": False, "error": "Current password is incorrect."}), 401
+        credentials[tech_name] = current_cred
+        credentials[tech_name]["password"] = new_password
+        credentials[tech_name]["mustChangePassword"] = False
+        SHARED_STATE["credentials"] = credentials
+    _persist_shared_state()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/mobile/action", methods=["POST"])

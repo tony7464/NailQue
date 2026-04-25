@@ -281,6 +281,10 @@
             for (let name in techCredentials) {
                 const t = techCredentials[name];
                 if (t.identifier && t.identifier.toLowerCase() === id && t.password === pass) {
+                    if (t.mustChangePassword) {
+                        const changed = await promptEmployeePasswordChange(id, pass, name);
+                        if (!changed) return;
+                    }
                     currentTech = name;
                     localStorage.setItem("employeeLastLoginId", id);
                     await showDashboard();
@@ -289,6 +293,44 @@
                 }
             }
             showToast("Invalid credentials.", true);
+        }
+
+        async function promptEmployeePasswordChange(identifier, currentPassword, techName) {
+            const nextPassword = prompt(
+                `${techName}, please set a new password before continuing.\nUse at least 4 characters.`,
+                ""
+            );
+            if (nextPassword == null) {
+                showToast("Password update required before login.", true);
+                return false;
+            }
+            const newPassword = String(nextPassword).trim();
+            if (newPassword.length < 4) {
+                showToast("New password must be at least 4 characters.", true);
+                return false;
+            }
+            if (newPassword === currentPassword) {
+                showToast("New password must be different.", true);
+                return false;
+            }
+            try {
+                const response = await fetch("/api/tech/change-password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ identifier, currentPassword, newPassword })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.error || "Could not update password.");
+                }
+                await loadSharedData();
+                document.getElementById("loginPassword").value = newPassword;
+                showToast("Password updated. Login complete.", false);
+                return true;
+            } catch (error) {
+                showToast(error.message || "Password update failed.", true);
+                return false;
+            }
         }
 
         async function showDashboard() {

@@ -457,7 +457,7 @@
 
             <div class="section-title">Create Nail Tech Account</div>
             <input id="newTechName" class="text-input" type="text" placeholder="Tech name (e.g., Mia)" />
-            <input id="newTechIdentifier" class="text-input" type="text" placeholder="Login ID (set by manager)" />
+            <input id="newTechIdentifier" class="text-input" type="text" placeholder="Login ID auto-generated from name" readonly />
             <input id="newTechPassword" class="text-input" type="password" placeholder="Temporary password (min 4 chars)" />
             <label class="toggle-small">
                 <input type="checkbox" id="newTechPasswordShow" onchange="toggleNewTechPasswordVisible()" style="margin-right:8px;vertical-align:middle;" />
@@ -602,6 +602,25 @@
 
         function normalizeIdentifier(value) {
             return String(value || "").trim().toLowerCase();
+        }
+
+        function formatTechIdentity(rawName) {
+            const parts = String(rawName || "")
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean)
+                .map((part) => part.replace(/[^a-zA-Z'-]/g, ""));
+            if (parts.length < 2) return null;
+            const first = parts[0];
+            const last = parts[parts.length - 1];
+            if (!first || !last) return null;
+            const firstName = first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+            const lastInitial = last.charAt(0).toUpperCase();
+            if (!/[A-Z]/.test(lastInitial)) return null;
+            return {
+                techName: `${firstName} ${lastInitial}`,
+                identifier: `${firstName.toLowerCase()}${lastInitial.toLowerCase()}`
+            };
         }
 
         function playSoundEffect(kind) {
@@ -1063,13 +1082,11 @@
             const error = status.last_error ? escapeHtml(status.last_error) : "";
             const latest = escapeHtml(status.latest_version || "unknown");
             const current = escapeHtml(status.current_version || "unknown");
-            const repo = escapeHtml(status.repo || "not configured");
             const downloadedPath = downloaded ? escapeHtml(status.downloaded_path) : "";
             const checkedAt = formatUpdateTimestamp(status.last_checked);
             panel.innerHTML = `
                 <div style="color:#f5f0e8;"><strong>Current:</strong> ${current}</div>
                 <div style="color:#f5f0e8;"><strong>Latest:</strong> ${latest}</div>
-                <div style="color:#a58f6b;"><strong>Repo:</strong> ${repo}</div>
                 <div style="color:${enabled ? "#d4af77" : "#ffb3b3"};"><strong>Updater:</strong> ${enabled ? "Enabled" : "Disabled"}</div>
                 <div style="color:${available ? "#d4af77" : "#a58f6b"};"><strong>Status:</strong> ${checking ? "Checking..." : (available ? "Update available" : "Up to date")}</div>
                 <div style="color:${downloaded ? "#d4af77" : "#a58f6b"};"><strong>Package:</strong> ${downloaded ? "Downloaded" : "Not downloaded yet"}</div>
@@ -1503,15 +1520,23 @@
         }
 
         function createTechAccount() {
-            const techName = document.getElementById("newTechName").value.trim();
-            const identifier = document.getElementById("newTechIdentifier").value.trim();
+            const rawTechName = document.getElementById("newTechName").value.trim();
             const password = document.getElementById("newTechPassword").value.trim();
-            if (!techName || !identifier || !password) {
-                showManagerMessage("Please provide name, login identifier, and password.", true);
+            if (!rawTechName || !password) {
+                showManagerMessage("Please provide name and password.", true);
                 showActionToast("Account not created: all fields are required.", true);
                 addManagerActivity("Failed account create: missing required fields.", "error");
                 return;
             }
+            const identity = formatTechIdentity(rawTechName);
+            if (!identity) {
+                showManagerMessage("Use format: FirstName LastName (example: Mia Tran).", true);
+                showActionToast("Account not created: name must include first and last name.", true);
+                addManagerActivity(`Failed account create for ${rawTechName}: invalid name format.`, "error");
+                return;
+            }
+            const techName = identity.techName;
+            const identifier = identity.identifier;
             if (password.length < 4) {
                 showManagerMessage("Password must be at least 4 characters.", true);
                 showActionToast("Account not created: password must be at least 4 characters.", true);
@@ -1549,6 +1574,7 @@
             creds[techName] = creds[techName] || {};
             creds[techName].identifier = identifier.trim();
             creds[techName].password = password;
+            creds[techName].mustChangePassword = true;
             saveCredentialsMap(creds);
 
             document.getElementById("newTechName").value = "";
@@ -1581,8 +1607,10 @@
             const creds = getCredentialsMap();
             creds[techName] = creds[techName] || {};
             creds[techName].password = newPassword;
+            creds[techName].mustChangePassword = true;
             if (!creds[techName].identifier) {
-                creds[techName].identifier = `${String(techName).toLowerCase().replace(/\s+/g, "")}@example.com`;
+                const identity = formatTechIdentity(techName);
+                creds[techName].identifier = identity ? identity.identifier : String(techName).toLowerCase().replace(/\s+/g, "");
             }
             saveCredentialsMap(creds);
             showManagerMessage(`Password updated for ${techName}.`);
@@ -1675,8 +1703,9 @@
             localStorage.setItem("nailTechNames", JSON.stringify(names));
             const creds = getCredentialsMap();
             creds[name] = credentials && Object.keys(credentials).length ? credentials : {
-                identifier: `${String(name).toLowerCase().replace(/\s+/g, "")}@example.com`,
-                password: "1234"
+                identifier: (formatTechIdentity(name) || {}).identifier || String(name).toLowerCase().replace(/\s+/g, ""),
+                password: "1234",
+                mustChangePassword: false
             };
             saveCredentialsMap(creds);
             saveQueueState();
@@ -1994,7 +2023,9 @@
             const existingCreds = JSON.parse(localStorage.getItem("nailTechCredentials") || "{}");
             techNames.forEach((name) => {
                 if (!existingCreds[name]) {
-                    existingCreds[name] = { identifier: `${name.toLowerCase()}@example.com`, password: "1234" };
+                    existingCreds[name] = { identifier: `${String(name).toLowerCase().replace(/\s+/g, "")}@example.com`, password: "1234", mustChangePassword: false };
+                } else if (typeof existingCreds[name].mustChangePassword !== "boolean") {
+                    existingCreds[name].mustChangePassword = false;
                 }
             });
             localStorage.setItem("nailTechCredentials", JSON.stringify(existingCreds));
@@ -2084,6 +2115,10 @@
             });
             document.getElementById("newTechPassword").addEventListener("keydown", (event) => {
                 if (event.key === "Enter") createTechAccount();
+            });
+            document.getElementById("newTechName").addEventListener("input", (event) => {
+                const identity = formatTechIdentity(event.target.value || "");
+                document.getElementById("newTechIdentifier").value = identity ? identity.identifier : "";
             });
             document.getElementById("managerPinGateInput").addEventListener("keydown", (event) => {
                 if (event.key === "Enter") submitManagerPinGate();

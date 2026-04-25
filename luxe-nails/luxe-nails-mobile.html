@@ -110,6 +110,8 @@
             const current = payload.techState && payload.techState.current ? payload.techState.current : "";
             currentTechState = payload.techState || {};
             servicesMenu = Array.isArray(payload.servicesMenu) ? payload.servicesMenu : [];
+            const hasActiveCustomer = status === "Busy" && !!current;
+            document.getElementById("serviceCard").classList.toggle("hidden", !hasActiveCustomer);
             document.getElementById("techStatus").innerHTML = `<span class="status-pill ${statusClass(status)}">${status.toUpperCase()}</span>${current ? ` <span style="color:#a58f6b;">• ${current}</span>` : ""}`;
             const queue = Array.isArray(payload.waitingQueue) ? payload.waitingQueue : [];
             const queueList = document.getElementById("queueList");
@@ -123,7 +125,9 @@
             }
             renderTechOrder(payload.techsOverview || []);
             renderEmployeeStats(payload.serviceHistory || []);
-            renderServiceSelector();
+            if (hasActiveCustomer) {
+                renderServiceSelector();
+            }
             renderHistory(payload.serviceHistory || []);
         }
 
@@ -226,7 +230,12 @@
                 });
                 const data = await response.json();
                 if (!response.ok || !data.ok) throw new Error(data.error || "Login failed.");
-                authToken = data.token;
+                authToken = data.token || "";
+                if (data.mustChangePassword) {
+                    const changed = await promptMobilePasswordChange(password);
+                    if (!changed) return;
+                    return await login();
+                }
                 techName = data.tech || "";
                 localStorage.setItem("mobileTechToken", authToken);
                 localStorage.setItem("mobileTechName", techName);
@@ -234,6 +243,40 @@
                 await refreshState();
             } catch (error) {
                 document.getElementById("loginError").textContent = error.message || "Login failed.";
+            }
+        }
+
+        async function promptMobilePasswordChange(currentPassword) {
+            const next = prompt("Please set a new password before continuing (min 4 characters):", "");
+            if (next == null) {
+                document.getElementById("loginError").textContent = "Password update is required before login.";
+                return false;
+            }
+            const newPassword = String(next).trim();
+            if (newPassword.length < 4) {
+                document.getElementById("loginError").textContent = "New password must be at least 4 characters.";
+                return false;
+            }
+            if (newPassword === currentPassword) {
+                document.getElementById("loginError").textContent = "New password must be different.";
+                return false;
+            }
+            try {
+                const response = await fetch("/api/mobile/change-password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                    body: JSON.stringify({ currentPassword, newPassword })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) throw new Error(data.error || "Could not update password.");
+                document.getElementById("passwordInput").value = newPassword;
+                document.getElementById("loginError").textContent = "Password updated. Please log in again.";
+                localStorage.removeItem("mobileTechToken");
+                authToken = "";
+                return true;
+            } catch (error) {
+                document.getElementById("loginError").textContent = error.message || "Password update failed.";
+                return false;
             }
         }
 
