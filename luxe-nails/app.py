@@ -1,6 +1,8 @@
 from flask import Flask, jsonify, request, send_from_directory
+import base64
 import json
 import ipaddress
+import io
 import logging
 from logging.handlers import RotatingFileHandler
 import os
@@ -16,6 +18,7 @@ import webbrowser
 from urllib.error import URLError
 from urllib.request import urlopen, Request
 from dotenv import load_dotenv
+import qrcode
 
 app = Flask(__name__)
 app.config["JSONIFY_PRETTYPRINT_REGULAR"] = False
@@ -80,6 +83,25 @@ MOBILE_SESSION_TTL_SECONDS = 12 * 60 * 60
 SHARED_STATE_LOCK = threading.Lock()
 SHARED_STATE_FILE = RUNTIME_DIR / "shared_state.json"
 SHARED_STATE = {}
+SERVICE_HISTORY_FILE = RUNTIME_DIR / "service_history.json"
+SERVICES_MENU = [
+    {"name": "Spa Manicure", "price": 40},
+    {"name": "Signature Manicure", "price": 50},
+    {"name": "Ultimate M.V. Spa Manicure", "price": 65},
+    {"name": "Spa Pedicure", "price": 60},
+    {"name": "Signature Pedicure", "price": 70},
+    {"name": "Full Set Acrylic", "price": 55},
+    {"name": "Fill", "price": 40},
+    {"name": "Gel Polish", "price": 25},
+    {"name": "Polish Change", "price": 15},
+    {"name": "Nail Art (per nail)", "price": 5},
+    {"name": "Coffin / Stiletto Shape (+$5)", "price": 5},
+    {"name": "Almond / Ballerina Shape (+$5)", "price": 5},
+    {"name": "Paraffin Treatment", "price": 15},
+    {"name": "Sugar Scrub", "price": 10},
+    {"name": "Collagen Gloves", "price": 20},
+    {"name": "Hot Stone Massage", "price": 15},
+]
 
 
 def _empty_shared_state():
@@ -128,16 +150,9 @@ def _is_private_or_loopback(ip_text: str) -> bool:
 
 
 def _is_same_lan_client(ip_text: str) -> bool:
-    if not _is_private_or_loopback(ip_text):
-        return False
-    if ip_text in {"127.0.0.1", "::1"}:
-        return True
-    lan_ip = _detect_lan_ip()
-    try:
-        network = ipaddress.ip_network(f"{lan_ip}/24", strict=False)
-        return ipaddress.ip_address(ip_text) in network
-    except ValueError:
-        return False
+    # Restrict to private/loopback ranges; this keeps access local-network only
+    # while avoiding false negatives across different private subnet masks.
+    return _is_private_or_loopback(ip_text)
 
 
 def _request_client_ip():
@@ -152,6 +167,17 @@ def _mobile_requires_lan():
     if not _is_same_lan_client(client_ip):
         return jsonify({"error": "Mobile access is only allowed from the same local network."}), 403
     return None
+
+
+def _qr_png_data_url(text: str) -> str:
+    qr = qrcode.QRCode(border=2, box_size=6)
+    qr.add_data(text)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
 
 
 def _safe_copy_shared_state():
@@ -264,7 +290,6 @@ def _setup_logging():
 
 
 _setup_logging()
-_load_shared_state()
 
 
 def _read_json(path: Path, fallback):
@@ -282,6 +307,44 @@ def _write_json_atomic(path: Path, payload):
     with temp_path.open("w", encoding="utf-8") as file:
         json.dump(payload, file, indent=2)
     os.replace(temp_path, path)
+
+
+_load_shared_state()
+
+
+def _read_service_history():
+    records = _read_json(SERVICE_HISTORY_FILE, [])
+    if not isinstance(records, list):
+        return []
+    return records
+
+
+def _append_service_history(record):
+    records = _read_service_history()
+    records.append(record)
+    records = records[-1000:]
+    _write_json_atomic(SERVICE_HISTORY_FILE, records)
+
+
+def _build_service_details(selected_service_indexes):
+    total = 0.0
+    selected_indexes = []
+    selected_services = []
+    for idx in selected_service_indexes:
+        if not isinstance(idx, int):
+            continue
+        if idx < 0 or idx >= len(SERVICES_MENU):
+            continue
+        selected_indexes.append(idx)
+        svc = SERVICES_MENU[idx]
+        selected_services.append(svc["name"])
+        total += float(svc["price"])
+    return {
+        "selectedServiceIndexes": selected_indexes,
+        "selectedServices": selected_services,
+        "total": round(total, 2),
+        "employeeShare": round(total * 0.6, 2),
+    }
 
 
 def _read_manager_settings():
@@ -570,10 +633,12 @@ def install_update():
 def network_info():
     lan_ip = _detect_lan_ip()
     port = int(os.getenv("PORT", "5001"))
+    mobile_url = f"http://{lan_ip}:{port}/mobile"
     return jsonify({
         "ok": True,
         "lan_ip": lan_ip,
-        "mobile_url": f"http://{lan_ip}:{port}/mobile",
+        "mobile_url": mobile_url,
+        "mobile_qr_data_url": _qr_png_data_url(mobile_url),
     })
 
 
@@ -599,6 +664,38 @@ def shared_sync():
 @app.route("/api/shared/state", methods=["GET"])
 def shared_state():
     return jsonify({"ok": True, "state": _safe_copy_shared_state()})
+
+
+@app.route("/api/services/history", methods=["GET"])
+def services_history():
+    records = _read_service_history()
+    return jsonify({"ok": True, "records": records[-200:]})
+
+
+@app.route("/api/services/record", methods=["POST"])
+def services_record():
+    payload = request.get_json(silent=True) or {}
+    tech_name = str(payload.get("tech") or "").strip()
+    customer_name = str(payload.get("customer") or "Customer").strip() or "Customer"
+    selected_indexes = payload.get("selectedServiceIndexes") or []
+    if not isinstance(selected_indexes, list):
+        selected_indexes = []
+    selected_indexes = [int(i) for i in selected_indexes if isinstance(i, int)]
+    details = _build_service_details(selected_indexes)
+    completed_at = str(payload.get("completedAt") or "") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    source = str(payload.get("source") or "frontdesk")
+    record = {
+        "tech": tech_name,
+        "customer": customer_name,
+        "selectedServiceIndexes": details["selectedServiceIndexes"],
+        "selectedServices": details["selectedServices"],
+        "total": details["total"],
+        "employeeShare": details["employeeShare"],
+        "completedAt": completed_at,
+        "source": source,
+    }
+    _append_service_history(record)
+    return jsonify({"ok": True, "record": record})
 
 
 @app.route("/api/mobile/login", methods=["POST"])
@@ -638,11 +735,25 @@ def mobile_state():
     if not session:
         return jsonify({"ok": False, "error": "Unauthorized."}), 401
     state = _safe_copy_shared_state()
+    techs = state.get("techs") or {}
+    techs_overview = [
+        {
+            "name": name,
+            "status": str((details or {}).get("status") or "Offline"),
+            "current": str((details or {}).get("current") or ""),
+            "startTime": (details or {}).get("startTime"),
+        }
+        for name, details in techs.items()
+    ]
+    techs_overview.sort(key=lambda item: item["name"].lower())
     return jsonify({
         "ok": True,
         "tech": session.get("tech"),
-        "techState": (state.get("techs") or {}).get(session.get("tech")) or {},
+        "techState": techs.get(session.get("tech")) or {},
         "waitingQueue": state.get("waitingQueue") or [],
+        "techsOverview": techs_overview,
+        "servicesMenu": SERVICES_MENU,
+        "serviceHistory": _read_service_history()[-80:],
     })
 
 
@@ -684,6 +795,23 @@ def mobile_action():
                     bonus_clock_ins[tech_name] = now_ms
                 SHARED_STATE["bonusClockIns"] = bonus_clock_ins
         elif action == "finish_customer":
+            selected_indexes_raw = payload.get("selectedServiceIndexes") or []
+            if not isinstance(selected_indexes_raw, list):
+                return jsonify({"ok": False, "error": "Service selection is invalid."}), 400
+            selected_indexes = [int(i) for i in selected_indexes_raw if isinstance(i, int)]
+            details = _build_service_details(selected_indexes)
+            completed_customer_name = str(tech.get("current") or "Customer")
+            completion_record = {
+                "tech": tech_name,
+                "customer": completed_customer_name,
+                "selectedServiceIndexes": details["selectedServiceIndexes"],
+                "selectedServices": details["selectedServices"],
+                "total": details["total"],
+                "employeeShare": details["employeeShare"],
+                "completedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "source": "mobile",
+            }
+            tech["earnings"] = round(float(tech.get("earnings") or 0) + details["employeeShare"], 2)
             tech["status"] = "Available"
             tech["current"] = None
             tech["startTime"] = None
@@ -691,6 +819,7 @@ def mobile_action():
             if not bonus_clock_ins.get(tech_name):
                 bonus_clock_ins[tech_name] = now_ms
             SHARED_STATE["bonusClockIns"] = bonus_clock_ins
+            _append_service_history(completion_record)
         elif action == "unready":
             if tech.get("status") == "Busy":
                 return jsonify({"ok": False, "error": "Cannot go unready while busy."}), 400

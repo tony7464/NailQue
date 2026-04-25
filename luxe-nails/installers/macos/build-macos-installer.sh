@@ -81,22 +81,18 @@ cat >> "$APP_INFO" <<EOF
 </plist>
 EOF
 
-PKG_PATH_VERSIONED="$OUT_DIR/NailQue-macOS-${APP_VERSION}.pkg"
-PKG_PATH_LATEST="$OUT_DIR/NailQue-macOS.pkg"
+PKG_PATH="$OUT_DIR/NailQue-macOS.pkg"
 echo "==> Building PKG installer"
-rm -f "$PKG_PATH_VERSIONED" "$PKG_PATH_LATEST"
+rm -f "$PKG_PATH"
 pkgbuild \
   --root "$WORK_DIR/payload" \
   --identifier "com.mvince.nailque" \
   --version "$APP_VERSION" \
   --install-location "/" \
-  "$PKG_PATH_VERSIONED"
-cp "$PKG_PATH_VERSIONED" "$PKG_PATH_LATEST"
+  "$PKG_PATH"
 
 echo ""
 echo "Installer created:"
-echo "  $PKG_PATH_VERSIONED"
-echo "Latest alias:"
-echo "  $PKG_PATH_LATEST"
+echo "  $PKG_PATH"
 echo "Version:"
 echo "  $APP_VERSION"
