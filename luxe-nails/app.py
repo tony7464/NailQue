@@ -59,7 +59,10 @@ def _load_app_version() -> str:
 
 
 APP_VERSION = _load_app_version()
-AUTO_UPDATE_REPO = os.getenv("AUTO_UPDATE_REPO", "tony7464/NailQue").strip()
+# If AUTO_UPDATE_REPO is set but empty in any .env, os.getenv returns "" and would disable OTA.
+_DEFAULT_UPDATE_REPO = "tony7464/NailQue"
+_repo_env = (os.getenv("AUTO_UPDATE_REPO") or "").strip()
+AUTO_UPDATE_REPO = _repo_env or _DEFAULT_UPDATE_REPO
 AUTO_UPDATE_ENABLED = os.getenv("AUTO_UPDATE_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 AUTO_UPDATE_CHECK_INTERVAL_SECONDS = max(300, int(os.getenv("AUTO_UPDATE_CHECK_INTERVAL_SECONDS", "900")))
 AUTO_UPDATE_INCLUDE_PRERELEASE = os.getenv("AUTO_UPDATE_INCLUDE_PRERELEASE", "false").strip().lower() in {"1", "true", "yes", "on"}
