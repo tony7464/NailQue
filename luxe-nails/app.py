@@ -551,6 +551,12 @@ def trigger_update_check():
     return jsonify({"ok": True})
 
 
+@app.route("/api/update/check-sync", methods=["POST"])
+def trigger_update_check_sync():
+    check_for_updates(download_if_available=True)
+    return jsonify({"ok": True, "status": get_update_status()})
+
+
 @app.route("/api/update/install", methods=["POST"])
 def install_update():
     try:
