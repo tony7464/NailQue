@@ -37,8 +37,17 @@ def _get_paths():
 
 
 ASSETS_DIR, RUNTIME_DIR = _get_paths()
+# Env load order (later wins):
+# 1) Bundled / repo: ASSETS_DIR/.env — when running from source this is your luxe-nails/.env folder.
+# 2) Installed app data: ~/Library/Application Support/NailQue/.env (frozen) or same as (1) when not frozen.
+# 3) Optional absolute path: set NAILQUE_ENV_FILE to e.g. your luxe-nails/.env so the installed app uses it.
 load_dotenv(ASSETS_DIR / ".env", override=False)
 load_dotenv(RUNTIME_DIR / ".env", override=True)
+_env_override = (os.environ.get("NAILQUE_ENV_FILE") or "").strip()
+if _env_override:
+    _p = Path(_env_override).expanduser()
+    if _p.is_file():
+        load_dotenv(_p, override=True)
 MANAGER_SETTINGS_FILE = RUNTIME_DIR / "manager_settings.json"
 LOGS_DIR = RUNTIME_DIR / "logs"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
