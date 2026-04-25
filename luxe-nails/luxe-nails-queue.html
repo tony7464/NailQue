@@ -438,6 +438,18 @@
         </div>
     </div>
 
+    <!-- MANAGER PIN GATE (shown every time before Tech Management; closed when manager panel closes) -->
+    <div class="modal" id="managerPinModal" style="display:none;">
+        <div class="modal-content" style="max-width:420px; width:100%; background:#1f1914; border-radius:18px; padding:24px;">
+            <div class="modal-title" style="color:#d4af77; font-size:24px; font-weight:700;">Manager PIN</div>
+            <p style="color:#a58f6b; font-size:14px; margin-top:8px;">Enter the manager PIN to open Tech Management.</p>
+            <input id="managerPinGateInput" class="text-input" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" style="margin-top:16px;" />
+            <div id="managerPinGateMessage" style="margin-top:10px; font-size:14px; min-height:20px;"></div>
+            <button type="button" onclick="submitManagerPinGate()" style="width:100%;margin-top:12px;background:#d4af77;color:#1a1208;font-size:18px;font-weight:700;padding:14px;border:none;border-radius:9999px;cursor:pointer;">UNLOCK</button>
+            <button type="button" onclick="closeManagerPinModal()" style="width:100%;margin-top:10px;background:transparent;color:#d4af77;border:2px solid #d4af77;padding:14px;border-radius:9999px;cursor:pointer;">CANCEL</button>
+        </div>
+    </div>
+
     <!-- MANAGER MODAL -->
     <div class="modal" id="managerModal" style="display:none;">
         <div class="modal-content" style="max-width:760px; width:100%; background:#1f1914; border-radius:18px; padding:24px; max-height:90vh; overflow-y:auto;">
@@ -1345,9 +1357,32 @@
             }
         }
 
-        async function openManagerAccess() {
-            const entered = prompt("Enter Manager PIN:");
+        function openManagerAccess() {
+            if (document.getElementById("managerModal").style.display === "flex") {
+                return;
+            }
+            const pinModal = document.getElementById("managerPinModal");
+            const pinInput = document.getElementById("managerPinGateInput");
+            const pinMsg = document.getElementById("managerPinGateMessage");
+            pinInput.value = "";
+            pinMsg.textContent = "";
+            pinMsg.style.color = "#c48b6f";
+            pinModal.style.display = "flex";
+            setTimeout(() => pinInput.focus(), 50);
+        }
+
+        function closeManagerPinModal() {
+            document.getElementById("managerPinModal").style.display = "none";
+            document.getElementById("managerPinGateInput").value = "";
+            document.getElementById("managerPinGateMessage").textContent = "";
+        }
+
+        async function submitManagerPinGate() {
+            const entered = document.getElementById("managerPinGateInput").value.trim();
+            const pinMsg = document.getElementById("managerPinGateMessage");
             if (!entered) {
+                pinMsg.style.color = "#c48b6f";
+                pinMsg.textContent = "PIN is required.";
                 return;
             }
             try {
@@ -1358,13 +1393,16 @@
                 });
                 const data = await response.json();
                 if (!response.ok || !data.ok) {
-                    alert("Invalid PIN.");
+                    pinMsg.style.color = "#c48b6f";
+                    pinMsg.textContent = "Invalid PIN.";
                     return;
                 }
             } catch (error) {
-                alert("Could not verify manager PIN.");
+                pinMsg.style.color = "#c48b6f";
+                pinMsg.textContent = "Could not verify PIN. Try again.";
                 return;
             }
+            closeManagerPinModal();
             document.getElementById("bonusStartInput").value = bonusSettings.start;
             document.getElementById("bonusEndInput").value = bonusSettings.end;
             renderManagerTechList();
@@ -2047,9 +2085,16 @@
             document.getElementById("newTechPassword").addEventListener("keydown", (event) => {
                 if (event.key === "Enter") createTechAccount();
             });
+            document.getElementById("managerPinGateInput").addEventListener("keydown", (event) => {
+                if (event.key === "Enter") submitManagerPinGate();
+            });
+            document.getElementById("managerPinModal").addEventListener("click", (event) => {
+                if (event.target.id === "managerPinModal") closeManagerPinModal();
+            });
             document.addEventListener("keydown", (event) => {
                 if (event.key !== "Escape") return;
                 if (document.getElementById("removeTechConfirmModal").style.display === "flex") cancelRemoveTechConfirm();
+                else if (document.getElementById("managerPinModal").style.display === "flex") closeManagerPinModal();
                 else if (document.getElementById("managerModal").style.display === "flex") closeManagerModal();
                 else if (document.getElementById("finishModal").style.display === "flex") cancelFinishModal();
                 else if (document.getElementById("addCustomerModal").style.display === "flex") closeAddCustomerModal();
