@@ -1,10 +1,12 @@
 from flask import Flask, jsonify, request, send_from_directory
 import json
+import ipaddress
 import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -73,6 +75,184 @@ UPDATE_STATE = {
     "last_checked": 0,
     "last_error": "",
 }
+MOBILE_SESSIONS = {}
+MOBILE_SESSION_TTL_SECONDS = 12 * 60 * 60
+SHARED_STATE_LOCK = threading.Lock()
+SHARED_STATE_FILE = RUNTIME_DIR / "shared_state.json"
+SHARED_STATE = {}
+
+
+def _empty_shared_state():
+    return {
+        "techs": {},
+        "waitingQueue": [],
+        "nextCustomerId": 1,
+        "bonusClockIns": {},
+        "credentials": {},
+        "updatedAt": int(time.time()),
+    }
+
+
+def _load_shared_state():
+    global SHARED_STATE
+    saved = _read_json(SHARED_STATE_FILE, _empty_shared_state())
+    if not isinstance(saved, dict):
+        saved = _empty_shared_state()
+    for key, fallback in _empty_shared_state().items():
+        if key not in saved:
+            saved[key] = fallback
+    SHARED_STATE = saved
+
+
+def _persist_shared_state():
+    with SHARED_STATE_LOCK:
+        SHARED_STATE["updatedAt"] = int(time.time())
+        _write_json_atomic(SHARED_STATE_FILE, SHARED_STATE)
+
+
+def _detect_lan_ip():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+
+
+def _is_private_or_loopback(ip_text: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_text)
+        return ip.is_private or ip.is_loopback
+    except ValueError:
+        return False
+
+
+def _is_same_lan_client(ip_text: str) -> bool:
+    if not _is_private_or_loopback(ip_text):
+        return False
+    if ip_text in {"127.0.0.1", "::1"}:
+        return True
+    lan_ip = _detect_lan_ip()
+    try:
+        network = ipaddress.ip_network(f"{lan_ip}/24", strict=False)
+        return ipaddress.ip_address(ip_text) in network
+    except ValueError:
+        return False
+
+
+def _request_client_ip():
+    forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+    if forwarded:
+        return forwarded
+    return request.remote_addr or ""
+
+
+def _mobile_requires_lan():
+    client_ip = _request_client_ip()
+    if not _is_same_lan_client(client_ip):
+        return jsonify({"error": "Mobile access is only allowed from the same local network."}), 403
+    return None
+
+
+def _safe_copy_shared_state():
+    with SHARED_STATE_LOCK:
+        return {
+            "techs": dict(SHARED_STATE.get("techs") or {}),
+            "waitingQueue": list(SHARED_STATE.get("waitingQueue") or []),
+            "nextCustomerId": int(SHARED_STATE.get("nextCustomerId") or 1),
+            "bonusClockIns": dict(SHARED_STATE.get("bonusClockIns") or {}),
+            "credentials": dict(SHARED_STATE.get("credentials") or {}),
+            "updatedAt": int(SHARED_STATE.get("updatedAt") or 0),
+        }
+
+
+def _cleanup_mobile_sessions():
+    now = int(time.time())
+    expired = [token for token, item in MOBILE_SESSIONS.items() if int(item.get("expiresAt") or 0) <= now]
+    for token in expired:
+        MOBILE_SESSIONS.pop(token, None)
+
+
+def _get_active_mobile_techs():
+    _cleanup_mobile_sessions()
+    active = {}
+    now = int(time.time())
+    for session in MOBILE_SESSIONS.values():
+        tech_name = str(session.get("tech") or "")
+        if not tech_name:
+            continue
+        active[tech_name] = {
+            "tech": tech_name,
+            "ip": str(session.get("ip") or ""),
+            "expiresInSeconds": max(0, int(session.get("expiresAt") or 0) - now),
+        }
+    return list(active.values())
+
+
+def _resolve_mobile_session():
+    _cleanup_mobile_sessions()
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    token = auth.replace("Bearer ", "", 1).strip()
+    session = MOBILE_SESSIONS.get(token)
+    if not session:
+        return None
+    client_ip = _request_client_ip()
+    if session.get("ip") != client_ip:
+        return None
+    return session
+
+
+def _get_available_tech_order(state):
+    techs = state.get("techs") or {}
+    bonus_clock_ins = state.get("bonusClockIns") or {}
+    return sorted(
+        [name for name, details in techs.items() if details.get("status") == "Available"],
+        key=lambda name: int(bonus_clock_ins.get(name) or (10**15)),
+    )
+
+
+def _try_auto_assign_shared_state(state):
+    techs = state.get("techs") or {}
+    queue = state.get("waitingQueue") or []
+    bonus_clock_ins = state.get("bonusClockIns") or {}
+    if not queue:
+        return
+    now_ms = int(time.time() * 1000)
+
+    def assignable_index(tech_name):
+        for idx, customer in enumerate(queue):
+            appointment_time = customer.get("appointmentTime")
+            requested = customer.get("requestedTech") or ""
+            appointment_ready = not appointment_time or int(appointment_time) <= now_ms
+            matches = (not requested) or (requested == tech_name)
+            if appointment_ready and matches:
+                return idx
+        return -1
+
+    while True:
+        available_order = _get_available_tech_order(state)
+        if not available_order or not queue:
+            break
+        assigned = False
+        for tech_name in available_order:
+            idx = assignable_index(tech_name)
+            if idx < 0:
+                continue
+            customer = queue.pop(idx)
+            tech = techs.get(tech_name) or {}
+            tech["status"] = "Busy"
+            tech["current"] = customer.get("name") or "Customer"
+            tech["startTime"] = now_ms
+            techs[tech_name] = tech
+            assigned = True
+            break
+        if not assigned:
+            break
+    state["techs"] = techs
+    state["waitingQueue"] = queue
+    state["bonusClockIns"] = bonus_clock_ins
 
 
 def _setup_logging():
@@ -84,6 +264,7 @@ def _setup_logging():
 
 
 _setup_logging()
+_load_shared_state()
 
 
 def _read_json(path: Path, fallback):
@@ -379,6 +560,154 @@ def install_update():
         return jsonify({"ok": False, "error": str(error)}), 400
 
 
+@app.route("/api/network-info", methods=["GET"])
+def network_info():
+    lan_ip = _detect_lan_ip()
+    port = int(os.getenv("PORT", "5001"))
+    return jsonify({
+        "ok": True,
+        "lan_ip": lan_ip,
+        "mobile_url": f"http://{lan_ip}:{port}/mobile",
+    })
+
+
+@app.route("/api/shared/sync", methods=["POST"])
+def shared_sync():
+    payload = request.get_json(silent=True) or {}
+    with SHARED_STATE_LOCK:
+        if isinstance(payload.get("techs"), dict):
+            SHARED_STATE["techs"] = payload.get("techs")
+        if isinstance(payload.get("waitingQueue"), list):
+            SHARED_STATE["waitingQueue"] = payload.get("waitingQueue")
+        if isinstance(payload.get("bonusClockIns"), dict):
+            SHARED_STATE["bonusClockIns"] = payload.get("bonusClockIns")
+        if isinstance(payload.get("credentials"), dict):
+            SHARED_STATE["credentials"] = payload.get("credentials")
+        if isinstance(payload.get("nextCustomerId"), int):
+            SHARED_STATE["nextCustomerId"] = payload.get("nextCustomerId")
+        _try_auto_assign_shared_state(SHARED_STATE)
+    _persist_shared_state()
+    return jsonify({"ok": True, "state": _safe_copy_shared_state()})
+
+
+@app.route("/api/shared/state", methods=["GET"])
+def shared_state():
+    return jsonify({"ok": True, "state": _safe_copy_shared_state()})
+
+
+@app.route("/api/mobile/login", methods=["POST"])
+def mobile_login():
+    blocked = _mobile_requires_lan()
+    if blocked:
+        return blocked
+    payload = request.get_json(silent=True) or {}
+    identifier = str(payload.get("identifier") or "").strip().lower()
+    password = str(payload.get("password") or "")
+    with SHARED_STATE_LOCK:
+        credentials = dict(SHARED_STATE.get("credentials") or {})
+    matched_tech = None
+    for tech_name, cred in credentials.items():
+        saved_identifier = str((cred or {}).get("identifier") or "").strip().lower()
+        saved_password = str((cred or {}).get("password") or "")
+        if identifier == saved_identifier and password == saved_password:
+            matched_tech = tech_name
+            break
+    if not matched_tech:
+        return jsonify({"ok": False, "error": "Invalid login credentials."}), 401
+    token = uuid.uuid4().hex
+    MOBILE_SESSIONS[token] = {
+        "tech": matched_tech,
+        "ip": _request_client_ip(),
+        "expiresAt": int(time.time()) + MOBILE_SESSION_TTL_SECONDS,
+    }
+    return jsonify({"ok": True, "token": token, "tech": matched_tech})
+
+
+@app.route("/api/mobile/state", methods=["GET"])
+def mobile_state():
+    blocked = _mobile_requires_lan()
+    if blocked:
+        return blocked
+    session = _resolve_mobile_session()
+    if not session:
+        return jsonify({"ok": False, "error": "Unauthorized."}), 401
+    state = _safe_copy_shared_state()
+    return jsonify({
+        "ok": True,
+        "tech": session.get("tech"),
+        "techState": (state.get("techs") or {}).get(session.get("tech")) or {},
+        "waitingQueue": state.get("waitingQueue") or [],
+    })
+
+
+@app.route("/api/mobile/action", methods=["POST"])
+def mobile_action():
+    blocked = _mobile_requires_lan()
+    if blocked:
+        return blocked
+    session = _resolve_mobile_session()
+    if not session:
+        return jsonify({"ok": False, "error": "Unauthorized."}), 401
+    payload = request.get_json(silent=True) or {}
+    action = str(payload.get("action") or "").strip().lower()
+    tech_name = session.get("tech")
+    with SHARED_STATE_LOCK:
+        techs = SHARED_STATE.get("techs") or {}
+        tech = techs.get(tech_name)
+        if not tech:
+            return jsonify({"ok": False, "error": "Tech not found."}), 404
+        now_ms = int(time.time() * 1000)
+        if action == "clock_in":
+            if tech.get("status") not in {"Busy", "Scheduled Appointment"}:
+                tech["status"] = "Available"
+                bonus_clock_ins = SHARED_STATE.get("bonusClockIns") or {}
+                if not bonus_clock_ins.get(tech_name):
+                    bonus_clock_ins[tech_name] = now_ms
+                SHARED_STATE["bonusClockIns"] = bonus_clock_ins
+        elif action == "break":
+            if tech.get("status") == "Busy":
+                return jsonify({"ok": False, "error": "Cannot start break while busy."}), 400
+            tech["status"] = "On Break"
+            tech["current"] = None
+            tech["startTime"] = None
+        elif action == "end_break":
+            if tech.get("status") == "On Break":
+                tech["status"] = "Available"
+                bonus_clock_ins = SHARED_STATE.get("bonusClockIns") or {}
+                if not bonus_clock_ins.get(tech_name):
+                    bonus_clock_ins[tech_name] = now_ms
+                SHARED_STATE["bonusClockIns"] = bonus_clock_ins
+        elif action == "finish_customer":
+            tech["status"] = "Available"
+            tech["current"] = None
+            tech["startTime"] = None
+            bonus_clock_ins = SHARED_STATE.get("bonusClockIns") or {}
+            if not bonus_clock_ins.get(tech_name):
+                bonus_clock_ins[tech_name] = now_ms
+            SHARED_STATE["bonusClockIns"] = bonus_clock_ins
+        elif action == "unready":
+            if tech.get("status") == "Busy":
+                return jsonify({"ok": False, "error": "Cannot go unready while busy."}), 400
+            tech["status"] = "Offline"
+            tech["current"] = None
+            tech["startTime"] = None
+        else:
+            return jsonify({"ok": False, "error": "Unsupported action."}), 400
+        techs[tech_name] = tech
+        SHARED_STATE["techs"] = techs
+        _try_auto_assign_shared_state(SHARED_STATE)
+    _persist_shared_state()
+    return jsonify({"ok": True, "state": _safe_copy_shared_state()})
+
+
+@app.route("/api/mobile/active-techs", methods=["GET"])
+def mobile_active_techs():
+    blocked = _mobile_requires_lan()
+    if blocked:
+        return blocked
+    return jsonify({"ok": True, "activeTechs": _get_active_mobile_techs()})
+
+
 @app.route("/")
 def main_queue():
     return send_from_directory(ASSETS_DIR, "luxe-nails-queue.html")
@@ -387,6 +716,14 @@ def main_queue():
 @app.route("/employee")
 def employee_portal():
     return send_from_directory(ASSETS_DIR, "luxe-nails-employee.html")
+
+
+@app.route("/mobile")
+def mobile_portal():
+    blocked = _mobile_requires_lan()
+    if blocked:
+        return blocked
+    return send_from_directory(ASSETS_DIR, "luxe-nails-mobile.html")
 
 
 @app.route("/<path:path>")
@@ -431,13 +768,14 @@ def _launch_desktop_window(port: int) -> bool:
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5001"))
-    host = "127.0.0.1"
+    host = os.getenv("HOST", "0.0.0.0")
     auto_open_browser = _env_flag("AUTO_OPEN_BROWSER", True)
     use_desktop_window = _env_flag("USE_DESKTOP_WINDOW", True)
     dev_reload = _env_flag("DEV_RELOAD", False) and not getattr(sys, "frozen", False)
     print("\n🚀 NailQue started")
     print(f"   Queue           → http://localhost:{port}")
     print(f"   Employee Portal → http://localhost:{port}/employee")
+    print(f"   Mobile Portal   → http://{_detect_lan_ip()}:{port}/mobile")
     print(f"   Health          → http://localhost:{port}/api/health")
     print(f"   Runtime dir     → {RUNTIME_DIR}")
     print(f"   App version     → {APP_VERSION}")

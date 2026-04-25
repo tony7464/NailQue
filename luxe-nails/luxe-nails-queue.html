@@ -257,6 +257,17 @@
             border-color: #ff9b9b;
             color: #ffd9d9;
         }
+        .mobile-qr-box {
+            background: #2a221b;
+            border: 1px solid #3d2a1f;
+            border-radius: 14px;
+            padding: 14px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 180px;
+            margin: 12px 0;
+        }
 
         .activity-log {
             background: rgba(255,255,255,0.06);
@@ -359,6 +370,7 @@
         <div id="clock" class="clock"></div>
         <div class="footer-controls">
             <button class="nav-pill-btn" onclick="window.location.href='/employee'">EMPLOYEE PORTAL</button>
+            <button class="nav-pill-btn" onclick="openMobileAccessModal()">TECH MOBILE QR</button>
             <button class="nav-pill-btn" onclick="toggleTheme()">THEME</button>
             <button class="nav-pill-btn" onclick="openManagerAccess()">TECH MANAGEMENT</button>
             <button onclick="toggleFullscreen()" style="background:none;border:none;color:#d4af77;font-size:22px;cursor:pointer">⛶ FULLSCREEN</button>
@@ -465,6 +477,11 @@
                 <div id="updateStatusPanel" style="color:#a58f6b;font-size:13px;">Checking update status...</div>
             </div>
 
+            <div class="section-title">Mobile Connected Techs</div>
+            <div class="activity-log" style="margin-top:0;">
+                <div id="mobileTechSessionsPanel" style="color:#a58f6b;font-size:13px;">No active mobile sessions.</div>
+            </div>
+
             <div class="section-title">Manager Activity</div>
             <div class="row" style="justify-content:flex-end;margin-bottom:8px;">
                 <button type="button" class="btn-small" style="background:#8e6a35;color:#fff;" onclick="undoLastTechRemoval()">UNDO REMOVE</button>
@@ -495,6 +512,19 @@
 
     <div id="actionToast" class="toast" role="status" aria-live="polite"></div>
     <input id="importSalonDataInput" type="file" accept="application/json" style="display:none;" />
+    <div class="modal" id="mobileAccessModal" style="display:none;">
+        <div class="modal-content" style="max-width:520px; width:100%; background:#1f1914; border-radius:18px; padding:24px;">
+            <div class="modal-title" style="color:#d4af77; font-size:24px; font-weight:700;">TECH MOBILE ACCESS</div>
+            <div style="color:#a58f6b; margin-top:8px; font-size:14px;">Scan this QR code from a nail tech phone connected to the same Wi-Fi network.</div>
+            <div class="mobile-qr-box">
+                <div id="mobileQrContainer"></div>
+            </div>
+            <div id="mobileAccessUrl" style="word-break:break-all;color:#d4af77;font-size:13px;margin-bottom:10px;"></div>
+            <button onclick="copyMobileAccessUrl()" style="width:100%;background:#2d4f75;color:#f5f0e8;font-size:16px;font-weight:700;padding:12px;border:none;border-radius:9999px;cursor:pointer;margin-bottom:10px;">COPY LINK</button>
+            <button onclick="closeMobileAccessModal()" style="width:100%;background:transparent;color:#d4af77;border:2px solid #d4af77;padding:12px;border-radius:9999px;cursor:pointer;">CLOSE</button>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <script>
         const servicesMenu = [
@@ -542,6 +572,7 @@
         let bonusCycleQueue = [];
         let bonusCycleServed = [];
         let latestUpdateStatus = null;
+        let mobileAccessUrl = "";
         const soundFx = {
             startup: "/assets/sounds/startup_fx.mp3",
             click: "/assets/sounds/click_fx.mp3",
@@ -585,6 +616,7 @@
 
         function saveCredentialsMap(creds) {
             localStorage.setItem("nailTechCredentials", JSON.stringify(creds));
+            syncSharedStateToServer();
         }
 
         function nowMinutes() {
@@ -709,6 +741,54 @@
                 waiting: waitingQueue.length,
                 completedToday: todays.length
             };
+        }
+
+        function getSharedSyncPayload() {
+            return {
+                techs,
+                waitingQueue,
+                nextCustomerId,
+                bonusClockIns,
+                credentials: getCredentialsMap()
+            };
+        }
+
+        async function syncSharedStateToServer() {
+            try {
+                await fetch("/api/shared/sync", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(getSharedSyncPayload())
+                });
+            } catch (error) {
+                // no-op: queue still works locally even if sync fails
+            }
+        }
+
+        function applySharedStateFromServer(state) {
+            if (!state || typeof state !== "object") return;
+            if (!state.techs || !Array.isArray(state.waitingQueue)) return;
+            techs = state.techs;
+            waitingQueue = state.waitingQueue;
+            if (Number.isInteger(state.nextCustomerId)) nextCustomerId = state.nextCustomerId;
+            if (state.bonusClockIns && typeof state.bonusClockIns === "object") bonusClockIns = state.bonusClockIns;
+            if (state.credentials && typeof state.credentials === "object") {
+                localStorage.setItem("nailTechCredentials", JSON.stringify(state.credentials));
+            }
+            localStorage.setItem(queueStateKey, JSON.stringify({ techs, waitingQueue, nextCustomerId }));
+            renderTechBoard();
+            renderQueue();
+        }
+
+        async function fetchSharedStateFromServer() {
+            try {
+                const response = await fetch("/api/shared/state");
+                const data = await response.json();
+                if (!response.ok || !data.ok || !data.state) return;
+                applySharedStateFromServer(data.state);
+            } catch (error) {
+                // no-op
+            }
         }
 
         function formatAppointmentLabel(timestampMs) {
@@ -1027,6 +1107,37 @@
             }
         }
 
+        function renderMobileTechSessions(items) {
+            const panel = document.getElementById("mobileTechSessionsPanel");
+            if (!panel) return;
+            const sessions = Array.isArray(items) ? items : [];
+            if (!sessions.length) {
+                panel.innerHTML = `<div style="color:#a58f6b;">No active mobile sessions.</div>`;
+                return;
+            }
+            panel.innerHTML = sessions
+                .map((session) => {
+                    const tech = escapeHtml(session.tech || "Tech");
+                    const ip = escapeHtml(session.ip || "unknown");
+                    const minutes = Math.max(1, Math.ceil((Number(session.expiresInSeconds) || 0) / 60));
+                    return `<div class="activity-row"><span style="color:#f5f0e8;">${tech} • ${ip}</span><span class="activity-time">${minutes}m</span></div>`;
+                })
+                .join("");
+        }
+
+        async function fetchMobileTechSessions() {
+            try {
+                const response = await fetch("/api/mobile/active-techs");
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.error || "Could not load mobile sessions.");
+                }
+                renderMobileTechSessions(data.activeTechs || []);
+            } catch (error) {
+                renderMobileTechSessions([]);
+            }
+        }
+
         function renderManagerActivityLog() {
             const container = document.getElementById("managerActivityLog");
             if (!container) return;
@@ -1161,6 +1272,7 @@
             renderManagerTechList();
             renderManagerActivityLog();
             fetchUpdateStatus(false);
+            fetchMobileTechSessions();
             showManagerMessage("");
             document.getElementById("currentManagerPinInput").value = "";
             document.getElementById("newManagerPinInput").value = "";
@@ -1716,6 +1828,7 @@
 
         function saveQueueState() {
             localStorage.setItem(queueStateKey, JSON.stringify({ techs, waitingQueue, nextCustomerId }));
+            syncSharedStateToServer();
         }
 
         function loadQueueState() {
@@ -1765,6 +1878,42 @@
             showActionToast(`Theme set to ${mode}.`, false);
         }
 
+        async function openMobileAccessModal() {
+            try {
+                const response = await fetch("/api/network-info");
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.error || "Unable to load mobile access link.");
+                }
+                mobileAccessUrl = data.mobile_url || "";
+                document.getElementById("mobileAccessUrl").textContent = mobileAccessUrl;
+                const qrContainer = document.getElementById("mobileQrContainer");
+                qrContainer.innerHTML = "";
+                if (window.QRCode && mobileAccessUrl) {
+                    new QRCode(qrContainer, { text: mobileAccessUrl, width: 170, height: 170 });
+                } else {
+                    qrContainer.textContent = "QR unavailable.";
+                }
+                document.getElementById("mobileAccessModal").style.display = "flex";
+            } catch (error) {
+                showActionToast(error.message || "Could not open mobile access.", true);
+            }
+        }
+
+        function closeMobileAccessModal() {
+            document.getElementById("mobileAccessModal").style.display = "none";
+        }
+
+        async function copyMobileAccessUrl() {
+            if (!mobileAccessUrl) return;
+            try {
+                await navigator.clipboard.writeText(mobileAccessUrl);
+                showActionToast("Mobile link copied.", false);
+            } catch (error) {
+                showActionToast("Could not copy link.", true);
+            }
+        }
+
         function updateClock() {
             const clock = document.getElementById("clock");
             clock.textContent = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
@@ -1774,6 +1923,8 @@
             loadQueueState();
             loadBonusSettings();
             initializeSharedTechConfig();
+            syncSharedStateToServer();
+            fetchSharedStateFromServer();
             const savedTheme = localStorage.getItem(queueThemeKey);
             if (savedTheme === "light") document.body.classList.add("light-theme");
             renderTechBoard();
@@ -1805,6 +1956,9 @@
             });
             document.getElementById("removeTechConfirmModal").addEventListener("click", (event) => {
                 if (event.target.id === "removeTechConfirmModal") cancelRemoveTechConfirm();
+            });
+            document.getElementById("mobileAccessModal").addEventListener("click", (event) => {
+                if (event.target.id === "mobileAccessModal") closeMobileAccessModal();
             });
             document.getElementById("importSalonDataInput").addEventListener("change", (event) => {
                 const file = event.target.files && event.target.files[0];
@@ -1840,6 +1994,13 @@
             setInterval(() => {
                 fetchUpdateStatus(false);
             }, 30000);
+            setInterval(() => {
+                const managerOpen = document.getElementById("managerModal").style.display === "flex";
+                if (managerOpen) fetchMobileTechSessions();
+            }, 10000);
+            setInterval(() => {
+                fetchSharedStateFromServer();
+            }, 4000);
             updateClock();
             setupSoundEffects();
             fetchUpdateStatus(false);
