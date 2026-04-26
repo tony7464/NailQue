@@ -85,8 +85,24 @@
 
         .status { font-size: 32px; font-weight: 600; padding: 14px 36px; border-radius: 9999px; min-width: 240px; text-align: center; }
         .available { background: #d4af77; color: #1a1208; }
-        .busy { background: #c48b6f; color: #fff; }
-        .offline { background: #4a3f35; color: #d4af77; }
+        .busy {
+            background: linear-gradient(135deg, #0f5b4a 0%, #178268 48%, #34b892 100%);
+            color: #edfff8;
+            box-shadow: 0 0 0 1px rgba(138, 236, 203, 0.3) inset, 0 8px 18px rgba(10, 64, 50, 0.28);
+        }
+        .offline {
+            background:
+                linear-gradient(180deg, #2a1417, #1a0d10) padding-box,
+                linear-gradient(140deg, #ffd2d2 0%, #ff8d8d 28%, #e23447 55%, #b3132f 78%, #6f0e20 100%) border-box;
+            border: 2px solid transparent;
+            color: #ffe8ea;
+            box-shadow: 0 0 0 2px rgba(255, 109, 109, 0.2), 0 0 20px rgba(227, 52, 71, 0.3);
+            animation: offlineStatusPulse 2.2s ease-in-out infinite;
+        }
+        @keyframes offlineStatusPulse {
+            0%, 100% { box-shadow: 0 0 0 2px rgba(255, 109, 109, 0.18), 0 0 14px rgba(191, 22, 49, 0.22); }
+            50% { box-shadow: 0 0 0 2px rgba(255, 152, 152, 0.34), 0 0 26px rgba(255, 79, 103, 0.4); }
+        }
 
         .buttons {
             display: grid;
@@ -686,9 +702,12 @@
         let currentManagerUsername = "";
         let currentManagerFullName = "";
         let queueListAnimationFrame = 0;
+        let hasTechAssignmentSnapshot = false;
+        let techAssignmentSnapshot = {};
         const soundFx = {
             startup: "/assets/sounds/startup_fx.mp3",
             click: "/assets/sounds/click_fx.mp3",
+            customer: "/assets/sounds/startup_fx.mp3",
         };
         const soundPlayers = {};
 
@@ -715,17 +734,82 @@
             };
         }
 
-        function playSoundEffect(kind) {
+        function playSoundEffect(kind, volumeOverride) {
             const src = soundFx[kind];
-            if (!src) return;
+            if (!src) return Promise.resolve(false);
             const player = soundPlayers[kind] || new Audio(src);
             if (!soundPlayers[kind]) {
                 player.preload = "auto";
                 soundPlayers[kind] = player;
             }
-            player.volume = 0.6;
+            player.volume = typeof volumeOverride === "number" ? volumeOverride : 0.6;
             player.currentTime = 0;
-            player.play().catch(() => {});
+            const playResult = player.play();
+            if (playResult && typeof playResult.then === "function") {
+                return playResult.then(() => true).catch(() => false);
+            }
+            return Promise.resolve(true);
+        }
+
+        function playCustomerAssignedChime() {
+            // Prefer bundled chime and replay softly for audibility in salon noise.
+            playSoundEffect("customer", 0.82).then((played) => {
+                if (played) return;
+                synthesizeCustomerChime();
+            });
+            setTimeout(() => {
+                playSoundEffect("customer", 0.62);
+            }, 230);
+        }
+
+        function synthesizeCustomerChime() {
+            try {
+                const Context = window.AudioContext || window.webkitAudioContext;
+                if (!Context) return;
+                const audioCtx = new Context();
+                const now = audioCtx.currentTime;
+                const notes = [392.0, 523.25, 659.25];
+                notes.forEach((frequency, index) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = index === notes.length - 1 ? "triangle" : "sine";
+                    osc.frequency.setValueAtTime(frequency, now + index * 0.15);
+                    gain.gain.setValueAtTime(0.0001, now + index * 0.15);
+                    gain.gain.exponentialRampToValueAtTime(0.065, now + index * 0.15 + 0.03);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.15 + 0.34);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + index * 0.15);
+                    osc.stop(now + index * 0.15 + 0.36);
+                });
+                setTimeout(() => {
+                    audioCtx.close().catch(() => {});
+                }, 760);
+            } catch (error) {
+                // Ignore sound failures; visuals still indicate assignment.
+            }
+        }
+
+        function detectNewCustomerAssignments() {
+            const nextSnapshot = {};
+            let shouldChime = false;
+            Object.entries(techs).forEach(([name, t]) => {
+                const currentCustomer = (t && t.status === "Busy" && t.current) ? String(t.current) : "";
+                nextSnapshot[name] = currentCustomer;
+                if (!hasTechAssignmentSnapshot) return;
+                const previousCustomer = String(techAssignmentSnapshot[name] || "");
+                if (currentCustomer && currentCustomer !== previousCustomer) {
+                    shouldChime = true;
+                }
+            });
+            techAssignmentSnapshot = nextSnapshot;
+            if (!hasTechAssignmentSnapshot) {
+                hasTechAssignmentSnapshot = true;
+                return;
+            }
+            if (shouldChime) {
+                playCustomerAssignedChime();
+            }
         }
 
         function setupSoundEffects() {
@@ -1059,6 +1143,7 @@
         }
 
         function renderTechBoard() {
+            detectNewCustomerAssignments();
             const board = document.getElementById("techBoard");
             const metrics = getQueueAnalytics();
             const bonusPreview = getBonusOrderPreview();
