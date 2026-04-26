@@ -1,6 +1,11 @@
-# macOS Installer Guide
+# Installer Guide
 
-## Build the installer
+## Platform support
+
+- macOS: PKG installer pipeline
+- Windows: standalone EXE zip + setup installer EXE pipeline
+
+## Build macOS installer
 
 From `luxe-nails`:
 
@@ -76,3 +81,30 @@ rm -rf "/Applications/NailQue.app"
 sudo installer -pkg "dist-installers/NailQue-macOS.pkg" -target /
 open "/Applications/NailQue.app"
 ```
+
+## Build Windows installer
+
+From `luxe-nails` on a Windows build machine:
+
+```powershell
+.\build-windows.ps1
+```
+
+Or double-click:
+
+```text
+build-windows.bat
+```
+
+Generated artifacts:
+- `dist-installers/NailQue-Windows-Standalone-<version>.zip`
+- `dist-installers/NailQue-Setup-<version>.exe`
+- `dist-installers/NailQue-Setup.exe` (latest alias)
+
+Requirements:
+- Python 3.10+
+- Inno Setup 6 installed, or `INNO_SETUP_ISCC` set to `ISCC.exe`
+
+Versioning:
+- macOS uses `VERSION`
+- Windows uses `VERSION.windows` (falls back to `VERSION` if missing)
