@@ -387,14 +387,18 @@ def _normalize_manager_accounts(settings):
 def _get_manager_accounts():
     settings = _read_manager_settings()
     managers = _normalize_manager_accounts(settings)
-    if managers:
-        return managers
     legacy_pin = str(settings.get("pin") or "").strip()
-    default_name = str(os.getenv("MANAGER_FULL_NAME", "Salon Manager")).strip() or "Salon Manager"
-    default_username = str(os.getenv("MANAGER_USERNAME", "manager")).strip().lower() or "manager"
-    default_pin = legacy_pin or os.getenv("MANAGER_PIN", "1234")
-    managers = [{"username": default_username, "fullName": default_name, "pin": str(default_pin)}]
-    _write_manager_settings({"managers": managers})
+    default_name = str(os.getenv("MANAGER_FULL_NAME", "Admin")).strip() or "Admin"
+    default_username = "admin"
+    default_pin = str(os.getenv("MANAGER_PIN", "1234") or "1234").strip() or "1234"
+    if not managers:
+        managers = [{"username": default_username, "fullName": default_name, "pin": str(legacy_pin or default_pin)}]
+        _write_manager_settings({"managers": managers})
+        return managers
+    has_admin = any(str(manager.get("username") or "").strip().lower() == default_username for manager in managers)
+    if not has_admin:
+        managers.append({"username": default_username, "fullName": default_name, "pin": default_pin})
+        _write_manager_settings({"managers": managers})
     return managers
 
 
