@@ -88,6 +88,7 @@ UPDATE_STATE = {
     "asset_name": "",
     "asset_url": "",
     "downloaded_path": "",
+    "downloaded_version": "",
     "last_checked": 0,
     "last_error": "",
 }
@@ -559,10 +560,15 @@ def check_for_updates(download_if_available: bool = True):
             UPDATE_STATE["asset_url"] = release["asset_url"]
             UPDATE_STATE["available"] = _is_newer_version(release["version"], APP_VERSION)
             UPDATE_STATE["last_checked"] = int(time.time())
+            # Prevent stale package installs when latest version changes.
+            if UPDATE_STATE.get("downloaded_version") != release["version"]:
+                UPDATE_STATE["downloaded_path"] = ""
+                UPDATE_STATE["downloaded_version"] = ""
         if download_if_available and UPDATE_STATE["available"]:
             downloaded_path = _download_update_asset(release["asset_name"], release["asset_url"], release["version"])
             with UPDATE_LOCK:
                 UPDATE_STATE["downloaded_path"] = downloaded_path
+                UPDATE_STATE["downloaded_version"] = release["version"]
     except (ValueError, RuntimeError, OSError, URLError, TimeoutError, json.JSONDecodeError) as error:
         _set_update_error(str(error))
         return
@@ -595,6 +601,10 @@ def install_downloaded_update():
     pkg_path = status.get("downloaded_path") or ""
     if not pkg_path or not Path(pkg_path).exists():
         raise RuntimeError("No downloaded update package available.")
+    latest_version = str(status.get("latest_version") or "").strip()
+    downloaded_version = str(status.get("downloaded_version") or "").strip()
+    if latest_version and downloaded_version and latest_version != downloaded_version:
+        raise RuntimeError("Downloaded package is outdated. Run CHECK UPDATES first.")
     escaped_path = pkg_path.replace("\\", "\\\\").replace('"', '\\"')
     # Ensure we relaunch the newly-installed binary, not an already-running old process.
     script = (
