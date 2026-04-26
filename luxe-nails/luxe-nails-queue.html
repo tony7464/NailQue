@@ -442,8 +442,9 @@
     <div class="modal" id="managerPinModal" style="display:none;">
         <div class="modal-content" style="max-width:420px; width:100%; background:#1f1914; border-radius:18px; padding:24px;">
             <div class="modal-title" style="color:#d4af77; font-size:24px; font-weight:700;">Manager PIN</div>
-            <p style="color:#a58f6b; font-size:14px; margin-top:8px;">Enter the manager PIN to open Tech Management.</p>
-            <input id="managerPinGateInput" class="text-input" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" style="margin-top:16px;" />
+            <p style="color:#a58f6b; font-size:14px; margin-top:8px;">Enter manager username and PIN to open Tech Management.</p>
+            <input id="managerUsernameGateInput" class="text-input" type="text" autocomplete="off" placeholder="Username" style="margin-top:12px;" />
+            <input id="managerPinGateInput" class="text-input" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" style="margin-top:8px;" />
             <div id="managerPinGateMessage" style="margin-top:10px; font-size:14px; min-height:20px;"></div>
             <button type="button" onclick="submitManagerPinGate()" style="width:100%;margin-top:12px;background:#d4af77;color:#1a1208;font-size:18px;font-weight:700;padding:14px;border:none;border-radius:9999px;cursor:pointer;">UNLOCK</button>
             <button type="button" onclick="closeManagerPinModal()" style="width:100%;margin-top:10px;background:transparent;color:#d4af77;border:2px solid #d4af77;padding:14px;border-radius:9999px;cursor:pointer;">CANCEL</button>
@@ -480,11 +481,35 @@
 
             <div class="section-title">Tech Status Overrides</div>
             <div id="managerTechList"></div>
+            <div style="margin-top:10px;padding:12px;background:#2a221b;border-radius:12px;">
+                <div style="color:#d4af77;font-weight:700;margin-bottom:8px;">Reassign Active Customer</div>
+                <div class="row">
+                    <div style="flex:1;">
+                        <label class="field-label" for="reassignFromTechSelect">From tech</label>
+                        <select id="reassignFromTechSelect" class="select-input"></select>
+                    </div>
+                    <div style="flex:1;">
+                        <label class="field-label" for="reassignToTechSelect">To tech</label>
+                        <select id="reassignToTechSelect" class="select-input"></select>
+                    </div>
+                </div>
+                <button type="button" onclick="performManagerReassign()" style="width:100%;background:#2d4f75;color:#f5f0e8;font-size:15px;font-weight:700;padding:10px;border:none;border-radius:9999px;cursor:pointer;">REASSIGN CUSTOMER</button>
+            </div>
             
             <div class="section-title">Manager PIN</div>
+            <div id="currentManagerLabel" style="color:#a58f6b;font-size:13px;margin-bottom:8px;">Signed in manager: --</div>
             <input id="currentManagerPinInput" class="text-input" type="password" placeholder="Current PIN" />
             <input id="newManagerPinInput" class="text-input" type="password" placeholder="New PIN (min 4 digits)" />
             <button onclick="changeManagerPin()" style="width:100%;background:#8f6bc4;color:#fff;font-size:16px;font-weight:700;padding:10px;border:none;border-radius:9999px;cursor:pointer;">UPDATE MANAGER PIN</button>
+
+            <div class="section-title">Manager Accounts</div>
+            <input id="newManagerFullNameInput" class="text-input" type="text" placeholder="Full name (e.g., Maria Lopez)" />
+            <input id="newManagerUsernameInput" class="text-input" type="text" placeholder="Username (e.g., mlopez)" />
+            <input id="newManagerPinInput" class="text-input" type="password" inputmode="numeric" placeholder="PIN (min 4 digits)" />
+            <button onclick="createManagerAccount()" style="width:100%;background:#2d4f75;color:#f5f0e8;font-size:16px;font-weight:700;padding:10px;border:none;border-radius:9999px;cursor:pointer;">CREATE MANAGER ACCOUNT</button>
+            <div class="activity-log" style="margin-top:10px;">
+                <div id="managerAccountsPanel" style="color:#a58f6b;font-size:13px;">Loading manager accounts...</div>
+            </div>
 
             <div class="section-title">App Updates</div>
             <div class="row" style="justify-content:flex-end;margin-bottom:8px;">
@@ -594,6 +619,8 @@
         let bonusCycleServed = [];
         let latestUpdateStatus = null;
         let mobileAccessUrl = "";
+        let currentManagerUsername = "";
+        let currentManagerFullName = "";
         const soundFx = {
             startup: "/assets/sounds/startup_fx.mp3",
             click: "/assets/sounds/click_fx.mp3",
@@ -972,6 +999,7 @@
             const names = Object.keys(techs);
             if (names.length === 0) {
                 el.innerHTML = `<div style="color:#a58f6b;">No techs found.</div>`;
+                renderManagerReassignControls();
                 return;
             }
             el.innerHTML = names.map((name) => {
@@ -990,6 +1018,69 @@
                     </div>
                 </div>`;
             }).join("");
+            renderManagerReassignControls();
+        }
+
+        function renderManagerReassignControls() {
+            const fromSelect = document.getElementById("reassignFromTechSelect");
+            const toSelect = document.getElementById("reassignToTechSelect");
+            if (!fromSelect || !toSelect) return;
+            const names = Object.keys(techs);
+            const busyWithCustomer = names.filter((name) => techs[name] && techs[name].status === "Busy" && techs[name].current);
+            const eligibleTargets = names.filter((name) => !techs[name] || techs[name].status !== "Busy");
+            fromSelect.innerHTML = busyWithCustomer.length
+                ? busyWithCustomer.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)} (${escapeHtml(techs[name].current)})</option>`).join("")
+                : `<option value="">No active customers to move</option>`;
+            toSelect.innerHTML = eligibleTargets.length
+                ? eligibleTargets.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)} (${escapeHtml(techs[name].status || "Offline")})</option>`).join("")
+                : `<option value="">No destination tech available</option>`;
+        }
+
+        function performManagerReassign() {
+            const fromName = document.getElementById("reassignFromTechSelect").value;
+            const toName = document.getElementById("reassignToTechSelect").value;
+            if (!fromName || !toName) {
+                showManagerMessage("Select both source and destination tech.", true);
+                return;
+            }
+            if (fromName === toName) {
+                showManagerMessage("Source and destination must be different techs.", true);
+                return;
+            }
+            const fromTech = techs[fromName];
+            const toTech = techs[toName];
+            if (!fromTech || !toTech) {
+                showManagerMessage("Selected tech could not be found.", true);
+                return;
+            }
+            if (fromTech.status !== "Busy" || !fromTech.current) {
+                showManagerMessage(`${fromName} does not have an active customer to reassign.`, true);
+                return;
+            }
+            if (toTech.status === "Busy") {
+                showManagerMessage(`${toName} is currently busy.`, true);
+                return;
+            }
+            const customerName = fromTech.current;
+            fromTech.status = "Available";
+            fromTech.current = null;
+            fromTech.startTime = null;
+            if (!bonusClockIns[fromName]) {
+                bonusClockIns[fromName] = Date.now();
+            }
+            toTech.status = "Busy";
+            toTech.current = customerName;
+            toTech.startTime = Date.now();
+            bonusCycleQueue = bonusCycleQueue.filter((name) => name !== toName);
+            syncBonusCycleQueue();
+            localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
+            saveQueueState();
+            renderTechBoard();
+            renderQueue();
+            renderManagerTechList();
+            showManagerMessage(`Moved ${customerName} from ${fromName} to ${toName}.`);
+            showActionToast(`Customer moved: ${customerName} -> ${toName}.`, false);
+            addManagerActivity(`Reassigned ${customerName} from ${fromName} to ${toName}.`, "success");
         }
 
         function escapeHtml(value) {
@@ -1052,8 +1143,10 @@
         }
 
         function addManagerActivity(message, level) {
+            const actor = currentManagerFullName || currentManagerUsername || "Manager";
             const entry = {
                 message,
+                actor,
                 level: level || "info",
                 timestamp: new Date().toISOString()
             };
@@ -1278,7 +1371,8 @@
             container.innerHTML = managerActivityLog.slice(0, 12).map((entry) => {
                 const time = new Date(entry.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
                 const color = entry.level === "error" ? "#ffd9d9" : "#f5f0e8";
-                return `<div class="activity-row"><span style="color:${color};">${escapeHtml(entry.message)}</span><span class="activity-time">${time}</span></div>`;
+                const actor = escapeHtml(entry.actor || "Manager");
+                return `<div class="activity-row"><span style="color:${color};"><strong>${actor}:</strong> ${escapeHtml(entry.message)}</span><span class="activity-time">${time}</span></div>`;
             }).join("");
         }
 
@@ -1292,7 +1386,7 @@
 
         async function copyManagerActivityLog() {
             const text = managerActivityLog
-                .map((entry) => `${new Date(entry.timestamp).toLocaleString()} - ${entry.level.toUpperCase()} - ${entry.message}`)
+                .map((entry) => `${new Date(entry.timestamp).toLocaleString()} - ${(entry.actor || "Manager")} - ${entry.level.toUpperCase()} - ${entry.message}`)
                 .join("\n");
             if (!text) {
                 showActionToast("No activity log entries to copy.", true);
@@ -1303,6 +1397,67 @@
                 showActionToast("Manager activity log copied.", false);
             } catch (error) {
                 showActionToast("Copy failed. Clipboard access unavailable.", true);
+            }
+        }
+
+        function updateCurrentManagerLabel() {
+            const label = document.getElementById("currentManagerLabel");
+            if (!label) return;
+            if (!currentManagerUsername) {
+                label.textContent = "Signed in manager: --";
+                return;
+            }
+            const full = currentManagerFullName || currentManagerUsername;
+            label.textContent = `Signed in manager: ${full} (${currentManagerUsername})`;
+        }
+
+        async function fetchManagerAccounts() {
+            const panel = document.getElementById("managerAccountsPanel");
+            if (!panel) return;
+            try {
+                const response = await fetch("/api/manager/accounts");
+                const data = await response.json();
+                if (!response.ok || !data.ok) throw new Error(data.error || "Could not load manager accounts.");
+                const managers = Array.isArray(data.managers) ? data.managers : [];
+                if (!managers.length) {
+                    panel.innerHTML = `<div style="color:#a58f6b;">No manager accounts configured.</div>`;
+                    return;
+                }
+                panel.innerHTML = managers
+                    .map((manager) => `<div class="activity-row"><span>${escapeHtml(manager.fullName || manager.username || "")} (${escapeHtml(manager.username || "")})</span></div>`)
+                    .join("");
+            } catch (error) {
+                panel.innerHTML = `<div style="color:#ffd9d9;">${escapeHtml(error.message || "Could not load manager accounts.")}</div>`;
+            }
+        }
+
+        async function createManagerAccount() {
+            const fullName = document.getElementById("newManagerFullNameInput").value.trim();
+            const username = document.getElementById("newManagerUsernameInput").value.trim().toLowerCase();
+            const pin = document.getElementById("newManagerPinInput").value.trim();
+            if (!fullName || !username || !pin) {
+                showManagerMessage("Enter full name, username, and PIN for new manager.", true);
+                return;
+            }
+            try {
+                const response = await fetch("/api/manager/create-account", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ fullName, username, pin })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) throw new Error(data.error || "Could not create manager account.");
+                document.getElementById("newManagerFullNameInput").value = "";
+                document.getElementById("newManagerUsernameInput").value = "";
+                document.getElementById("newManagerPinInput").value = "";
+                showManagerMessage(`Manager account created for ${fullName}.`);
+                showActionToast(`Manager account created: ${username}`, false);
+                addManagerActivity(`Created manager account for ${fullName} (${username}).`, "success");
+                fetchManagerAccounts();
+            } catch (error) {
+                showManagerMessage(error.message || "Could not create manager account.", true);
+                showActionToast(error.message || "Could not create manager account.", true);
+                addManagerActivity(`Failed manager account create for ${username || "unknown"}.`, "error");
             }
         }
 
@@ -1379,41 +1534,47 @@
                 return;
             }
             const pinModal = document.getElementById("managerPinModal");
+            const userInput = document.getElementById("managerUsernameGateInput");
             const pinInput = document.getElementById("managerPinGateInput");
             const pinMsg = document.getElementById("managerPinGateMessage");
+            userInput.value = "";
             pinInput.value = "";
             pinMsg.textContent = "";
             pinMsg.style.color = "#c48b6f";
             pinModal.style.display = "flex";
-            setTimeout(() => pinInput.focus(), 50);
+            setTimeout(() => userInput.focus(), 50);
         }
 
         function closeManagerPinModal() {
             document.getElementById("managerPinModal").style.display = "none";
+            document.getElementById("managerUsernameGateInput").value = "";
             document.getElementById("managerPinGateInput").value = "";
             document.getElementById("managerPinGateMessage").textContent = "";
         }
 
         async function submitManagerPinGate() {
+            const username = document.getElementById("managerUsernameGateInput").value.trim().toLowerCase();
             const entered = document.getElementById("managerPinGateInput").value.trim();
             const pinMsg = document.getElementById("managerPinGateMessage");
-            if (!entered) {
+            if (!username || !entered) {
                 pinMsg.style.color = "#c48b6f";
-                pinMsg.textContent = "PIN is required.";
+                pinMsg.textContent = "Username and PIN are required.";
                 return;
             }
             try {
                 const response = await fetch("/api/manager/verify-pin", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ pin: entered })
+                    body: JSON.stringify({ username, pin: entered })
                 });
                 const data = await response.json();
                 if (!response.ok || !data.ok) {
                     pinMsg.style.color = "#c48b6f";
-                    pinMsg.textContent = "Invalid PIN.";
+                    pinMsg.textContent = "Invalid username or PIN.";
                     return;
                 }
+                currentManagerUsername = (data.manager && data.manager.username) || username;
+                currentManagerFullName = (data.manager && data.manager.fullName) || username;
             } catch (error) {
                 pinMsg.style.color = "#c48b6f";
                 pinMsg.textContent = "Could not verify PIN. Try again.";
@@ -1427,7 +1588,9 @@
             fetchUpdateStatus(false);
             fetchMobileTechSessions();
             fetchServiceHistory();
+            fetchManagerAccounts();
             showManagerMessage("");
+            updateCurrentManagerLabel();
             document.getElementById("currentManagerPinInput").value = "";
             document.getElementById("newManagerPinInput").value = "";
             document.getElementById("newTechPasswordShow").checked = false;
@@ -1438,6 +1601,9 @@
 
         function closeManagerModal() {
             document.getElementById("managerModal").style.display = "none";
+            currentManagerUsername = "";
+            currentManagerFullName = "";
+            updateCurrentManagerLabel();
         }
 
         function toggleNewTechPasswordVisible() {
@@ -1491,6 +1657,10 @@
         }
 
         async function changeManagerPin() {
+            if (!currentManagerUsername) {
+                showManagerMessage("Manager session missing. Re-open Tech Management.", true);
+                return;
+            }
             const currentPin = document.getElementById("currentManagerPinInput").value.trim();
             const newPin = document.getElementById("newManagerPinInput").value.trim();
             if (!currentPin || !newPin) {
@@ -1501,7 +1671,7 @@
                 const response = await fetch("/api/manager/set-pin", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ currentPin, newPin })
+                    body: JSON.stringify({ username: currentManagerUsername, currentPin, newPin })
                 });
                 const data = await response.json();
                 if (!response.ok) {
@@ -2123,6 +2293,17 @@
             document.getElementById("managerPinGateInput").addEventListener("keydown", (event) => {
                 if (event.key === "Enter") submitManagerPinGate();
             });
+            document.getElementById("managerUsernameGateInput").addEventListener("keydown", (event) => {
+                if (event.key === "Enter") submitManagerPinGate();
+            });
+            document.getElementById("newManagerFullNameInput").addEventListener("input", (event) => {
+                const raw = String(event.target.value || "").trim().toLowerCase();
+                const generated = raw.replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
+                const usernameInput = document.getElementById("newManagerUsernameInput");
+                if (usernameInput && !usernameInput.value) {
+                    usernameInput.value = generated;
+                }
+            });
             document.getElementById("managerPinModal").addEventListener("click", (event) => {
                 if (event.target.id === "managerPinModal") closeManagerPinModal();
             });
@@ -2199,6 +2380,7 @@
             fetchUpdateStatus(false);
             fetchServiceHistory();
             setTimeout(() => playSoundEffect("startup"), 220);
+            updateCurrentManagerLabel();
             console.log("%c✅ M. VINCÉ Nail Spa Queue System Ready with Tech Management", "color:#d4af77;font-size:18px");
         }
         window.onload = init;
