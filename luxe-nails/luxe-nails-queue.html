@@ -1439,22 +1439,11 @@
                 showManagerMessage("Enter full name, username, and PIN for new manager.", true);
                 return;
             }
-            if (!currentManagerUsername) {
-                showManagerMessage("Manager session missing. Re-open Tech Management.", true);
-                return;
-            }
-            const authPin = prompt(`Enter your manager PIN (${currentManagerUsername}) to authorize account creation:`, "");
-            if (authPin == null) return;
-            const normalizedAuthPin = String(authPin).trim();
-            if (!normalizedAuthPin) {
-                showManagerMessage("Authorization PIN is required.", true);
-                return;
-            }
             try {
                 const response = await fetch("/api/manager/create-account", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ fullName, username, pin, authUsername: currentManagerUsername, authPin: normalizedAuthPin })
+                    body: JSON.stringify({ fullName, username, pin })
                 });
                 const data = await response.json();
                 if (!response.ok || !data.ok) throw new Error(data.error || "Could not create manager account.");
@@ -2309,7 +2298,7 @@
             });
             document.getElementById("newManagerFullNameInput").addEventListener("input", (event) => {
                 const raw = String(event.target.value || "").trim().toLowerCase();
-                const generated = raw.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+                const generated = raw.replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
                 const usernameInput = document.getElementById("newManagerUsernameInput");
                 if (usernameInput && !usernameInput.value) {
                     usernameInput.value = generated;
