@@ -62,7 +62,8 @@
             background: var(--panel-soft);
             border-radius: 20px;
             padding: 24px;
-            display: flex;
+            display: grid;
+            grid-template-columns: minmax(180px, 1fr) auto minmax(420px, 1.35fr);
             align-items: center;
             gap: 28px;
             transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
@@ -87,7 +88,23 @@
         .busy { background: #c48b6f; color: #fff; }
         .offline { background: #4a3f35; color: #d4af77; }
 
-        .buttons { display: flex; gap: 12px; }
+        .buttons {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(88px, 1fr));
+            gap: 10px;
+            width: 100%;
+            justify-self: stretch;
+        }
+        .buttons .btn {
+            width: 100%;
+            white-space: nowrap;
+            text-align: center;
+            padding-left: 12px;
+            padding-right: 12px;
+        }
+        .buttons .btn-finish {
+            grid-column: 1 / -1;
+        }
         .btn { font-size: 20px; font-weight: 600; padding: 14px 24px; border: none; border-radius: 9999px; cursor: pointer; transition: transform 0.16s ease, filter 0.16s ease, box-shadow 0.16s ease; }
         .btn:hover { filter: brightness(1.06); box-shadow: 0 6px 16px rgba(0,0,0,0.24); }
         .btn:active { transform: translateY(1px) scale(0.99); filter: brightness(0.98); }
@@ -352,13 +369,21 @@
             .tech-name { font-size: 36px; min-width: 180px; }
             .status { font-size: 24px; min-width: 180px; padding: 10px 22px; }
             .btn { font-size: 16px; padding: 10px 16px; }
-            .buttons { gap: 8px; flex-wrap: wrap; }
+            .tech-panel { grid-template-columns: minmax(160px, 1fr) auto minmax(360px, 1.35fr); }
+            .buttons { gap: 8px; grid-template-columns: repeat(4, minmax(80px, 1fr)); }
             .add-btn { font-size: 18px; padding: 14px 28px; }
             .clock { font-size: 22px; }
             .nav-pill-btn { font-size: 13px; padding: 7px 12px; }
         }
 
         @media (max-width: 1300px) {
+            .tech-panel {
+                grid-template-columns: 1fr;
+                align-items: stretch;
+                gap: 14px;
+            }
+            .buttons { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+            .buttons .btn-finish { grid-column: 1 / -1; }
             .footer { flex-wrap: wrap; justify-content: center; }
             .footer-controls { justify-content: center; }
         }
@@ -1032,7 +1057,7 @@
                         <button class="btn" onclick="unreadyTech('${name}')" style="background:#4a3f35;color:#f5f0e8;">UNREADY</button>
                         <button class="btn" onclick="toggleTechBreak('${name}')" style="background:#7a5a3a;color:#f5f0e8;">${t.status === "On Break" ? "END BREAK" : "BREAK"}</button>
                         <button class="btn" onclick="skipNextForTech('${name}')" style="background:#3f566f;color:#f5f0e8;">SKIP NEXT</button>
-                        <button class="btn" onclick="finishTech('${name}')" style="background:#c48b6f;color:#fff;">FINISH CUSTOMER</button>
+                        <button class="btn btn-finish" onclick="finishTech('${name}')" style="background:#c48b6f;color:#fff;">FINISH CUSTOMER</button>
                     </div>
                 </div>`;
             });

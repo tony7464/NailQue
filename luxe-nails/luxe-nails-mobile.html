@@ -11,15 +11,40 @@
         .title { color: #d4af77; font-size: 22px; font-weight: 700; margin-bottom: 8px; }
         .subtitle { color: #a58f6b; font-size: 13px; margin-bottom: 10px; }
         .input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #3d2a1f; background: #2a221b; color: #f4efe5; margin-bottom: 10px; box-sizing: border-box; }
-        .btn { width: 100%; border: none; border-radius: 999px; padding: 12px; font-weight: 700; cursor: pointer; margin-bottom: 8px; }
+        .btn { width: 100%; border: none; border-radius: 999px; padding: 12px; font-weight: 700; cursor: pointer; margin-bottom: 8px; transition: transform 0.16s ease, filter 0.16s ease, box-shadow 0.2s ease; }
+        .btn:hover { filter: brightness(1.06); box-shadow: 0 6px 14px rgba(0, 0, 0, 0.24); }
+        .btn:active { transform: translateY(1px) scale(0.99); }
         .btn-primary { background: #d4af77; color: #1a1208; }
         .btn-muted { background: #3d2a1f; color: #f4efe5; }
         .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .status-pill { display: inline-block; padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 13px; }
         .Available { background: #d4af77; color: #1a1208; }
-        .Busy { background: #c48b6f; color: #fff; }
+        .Busy { background: linear-gradient(135deg, #0f5b4a 0%, #178268 48%, #34b892 100%); color: #edfff8; box-shadow: 0 0 0 1px rgba(138, 236, 203, 0.3) inset; }
         .Offline { background: #4a3f35; color: #d4af77; }
         .On\ Break { background: #7a5a3a; color: #fff; }
+        .tech-has-customer {
+            border-color: #2fb48d;
+            box-shadow: 0 0 0 1px rgba(47, 180, 141, 0.35), 0 14px 32px rgba(10, 64, 50, 0.32);
+            animation: jadeBreathe 2.4s ease-in-out infinite;
+        }
+        @keyframes jadeBreathe {
+            0%, 100% { box-shadow: 0 0 0 1px rgba(47, 180, 141, 0.3), 0 10px 24px rgba(10, 64, 50, 0.24); }
+            50% { box-shadow: 0 0 0 1px rgba(94, 214, 174, 0.46), 0 18px 36px rgba(10, 64, 50, 0.38); }
+        }
+        .btn-offline-active {
+            background:
+                linear-gradient(180deg, #2a1417, #1a0d10) padding-box,
+                linear-gradient(140deg, #ffd2d2 0%, #ff8d8d 28%, #e23447 55%, #b3132f 78%, #6f0e20 100%) border-box;
+            border: 1.5px solid transparent;
+            color: #ffe8ea;
+            box-shadow: 0 0 0 2px rgba(255, 109, 109, 0.2), 0 0 20px rgba(227, 52, 71, 0.3);
+            animation: offlineRingPulse 2.1s ease-in-out infinite;
+        }
+        @keyframes offlineRingPulse {
+            0%, 100% { box-shadow: 0 0 0 2px rgba(255, 109, 109, 0.16), 0 0 14px rgba(191, 22, 49, 0.24); }
+            50% { box-shadow: 0 0 0 2px rgba(255, 152, 152, 0.34), 0 0 26px rgba(255, 79, 103, 0.42); }
+        }
+        .tech-customer-name { color: #9be3ca; font-weight: 600; }
         .queue-item { border-bottom: 1px solid #3d2a1f; padding: 8px 0; font-size: 14px; }
         .service-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #3d2a1f; }
         .service-row:last-child { border-bottom: none; }
@@ -49,7 +74,7 @@
             <div id="techStatus"></div>
             <div style="margin-top:10px;" class="btn-row">
                 <button class="btn btn-primary" onclick="sendAction('clock_in')">CLOCK IN</button>
-                <button class="btn btn-muted" onclick="sendAction('unready')">UNREADY</button>
+                <button id="unreadyBtn" class="btn btn-muted" onclick="sendAction('unready')">UNREADY</button>
                 <button class="btn btn-muted" onclick="sendAction('break')">START BREAK</button>
                 <button class="btn btn-primary" onclick="sendAction('end_break')">END BREAK</button>
                 <button class="btn btn-primary" onclick="sendAction('finish_customer')" style="grid-column:1 / span 2;">FINISH CUSTOMER</button>
@@ -87,6 +112,8 @@
         let techName = localStorage.getItem("mobileTechName") || "";
         let servicesMenu = [];
         let currentTechState = {};
+        let hadActiveCustomer = false;
+        let hasRenderedState = false;
 
         function showLogin(show) {
             document.getElementById("loginCard").classList.toggle("hidden", !show);
@@ -111,8 +138,16 @@
             currentTechState = payload.techState || {};
             servicesMenu = Array.isArray(payload.servicesMenu) ? payload.servicesMenu : [];
             const hasActiveCustomer = status === "Busy" && !!current;
+            if (hasRenderedState && hasActiveCustomer && !hadActiveCustomer) {
+                playCustomerChime();
+            }
+            hadActiveCustomer = hasActiveCustomer;
+            hasRenderedState = true;
             document.getElementById("serviceCard").classList.toggle("hidden", !hasActiveCustomer);
-            document.getElementById("techStatus").innerHTML = `<span class="status-pill ${statusClass(status)}">${status.toUpperCase()}</span>${current ? ` <span style="color:#a58f6b;">• ${current}</span>` : ""}`;
+            document.getElementById("appCard").classList.toggle("tech-has-customer", hasActiveCustomer);
+            document.getElementById("unreadyBtn").classList.toggle("btn-offline-active", status === "Offline");
+            const customerToneClass = hasActiveCustomer ? "tech-customer-name" : "";
+            document.getElementById("techStatus").innerHTML = `<span class="status-pill ${statusClass(status)}">${status.toUpperCase()}</span>${current ? ` <span class="${customerToneClass}" style="color:${hasActiveCustomer ? "#9be3ca" : "#a58f6b"};">• ${current}</span>` : ""}`;
             const queue = Array.isArray(payload.waitingQueue) ? payload.waitingQueue : [];
             const queueList = document.getElementById("queueList");
             if (!queue.length) {
@@ -322,6 +357,34 @@
                 await refreshState();
             } catch (error) {
                 alert(error.message || "Action failed.");
+            }
+        }
+
+        function playCustomerChime() {
+            try {
+                const Context = window.AudioContext || window.webkitAudioContext;
+                if (!Context) return;
+                const audioCtx = new Context();
+                const now = audioCtx.currentTime;
+                const notes = [523.25, 659.25, 783.99];
+                notes.forEach((frequency, index) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = index === notes.length - 1 ? "triangle" : "sine";
+                    osc.frequency.setValueAtTime(frequency, now + index * 0.11);
+                    gain.gain.setValueAtTime(0.0001, now + index * 0.11);
+                    gain.gain.exponentialRampToValueAtTime(0.095, now + index * 0.11 + 0.025);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.11 + 0.28);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + index * 0.11);
+                    osc.stop(now + index * 0.11 + 0.30);
+                });
+                setTimeout(() => {
+                    audioCtx.close().catch(() => {});
+                }, 620);
+            } catch (error) {
+                // Ignore audio errors; visual cues still indicate status change.
             }
         }
 
