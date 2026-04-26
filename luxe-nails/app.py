@@ -7,6 +7,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
+import re
 import shutil
 import socket
 import subprocess
@@ -28,7 +29,13 @@ app.config["MAX_CONTENT_LENGTH"] = 64 * 1024  # 64KB request limit
 def _get_paths():
     if getattr(sys, "frozen", False):
         assets_dir = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
-        runtime_dir = Path.home() / "Library" / "Application Support" / "NailQue"
+        if sys.platform.startswith("win"):
+            runtime_root = os.environ.get("APPDATA") or str(Path.home())
+            runtime_dir = Path(runtime_root) / "NailQue"
+        elif sys.platform == "darwin":
+            runtime_dir = Path.home() / "Library" / "Application Support" / "NailQue"
+        else:
+            runtime_dir = Path.home() / ".config" / "NailQue"
     else:
         assets_dir = Path(__file__).resolve().parent
         runtime_dir = assets_dir
@@ -39,7 +46,10 @@ def _get_paths():
 ASSETS_DIR, RUNTIME_DIR = _get_paths()
 # Env load order (later wins):
 # 1) Bundled / repo: ASSETS_DIR/.env — when running from source this is your luxe-nails/.env folder.
-# 2) Installed app data: ~/Library/Application Support/NailQue/.env (frozen) or same as (1) when not frozen.
+# 2) Installed app data:
+#    - macOS: ~/Library/Application Support/NailQue/.env
+#    - Windows: %APPDATA%/NailQue/.env
+#    - Linux: ~/.config/NailQue/.env
 # 3) Optional absolute path: set NAILQUE_ENV_FILE to e.g. your luxe-nails/.env so the installed app uses it.
 load_dotenv(ASSETS_DIR / ".env", override=False)
 load_dotenv(RUNTIME_DIR / ".env", override=True)
@@ -56,18 +66,27 @@ UPDATES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _load_app_version() -> str:
-    version_file = ASSETS_DIR / "VERSION"
-    if version_file.exists():
+    version_files = []
+    if sys.platform.startswith("win"):
+        version_files = [ASSETS_DIR / "VERSION.windows", ASSETS_DIR / "VERSION"]
+    elif sys.platform == "darwin":
+        version_files = [ASSETS_DIR / "VERSION.macos", ASSETS_DIR / "VERSION"]
+    else:
+        version_files = [ASSETS_DIR / "VERSION"]
+    for version_file in version_files:
+        if not version_file.exists():
+            continue
         try:
             version = version_file.read_text(encoding="utf-8").strip()
             if version:
                 return version
         except OSError:
-            pass
+            continue
     return "1.0.0"
 
 
 APP_VERSION = _load_app_version()
+IS_WINDOWS = sys.platform.startswith("win")
 # If AUTO_UPDATE_REPO is set but empty in any .env, os.getenv returns "" and would disable OTA.
 _DEFAULT_UPDATE_REPO = "tony7464/NailQue"
 _repo_env = (os.getenv("AUTO_UPDATE_REPO") or "").strip()
@@ -529,19 +548,28 @@ def _is_newer_version(candidate: str, current: str) -> bool:
     return _normalize_version(candidate) > _normalize_version(current)
 
 
+def _extract_version_from_asset_name(asset_name: str) -> str:
+    name = str(asset_name or "")
+    match = re.search(r"(\d+\.\d+\.\d+)", name)
+    if match:
+        return match.group(1)
+    return ""
+
+
 def _select_release_asset(release_payload):
     assets = release_payload.get("assets") or []
-    preferred = None
+    preferred_extensions = [".pkg"]
+    preferred_name_hints = ["NailQue-macOS"]
+    if IS_WINDOWS:
+        preferred_extensions = [".exe"]
+        preferred_name_hints = ["NailQue-Setup", "NailQue-Windows", "NailQue"]
     for asset in assets:
         name = str(asset.get("name") or "")
-        if name.endswith(".pkg") and "NailQue-macOS" in name:
-            preferred = asset
-            break
-    if preferred:
-        return preferred
+        if any(name.endswith(ext) for ext in preferred_extensions) and any(hint in name for hint in preferred_name_hints):
+            return asset
     for asset in assets:
         name = str(asset.get("name") or "")
-        if name.endswith(".pkg"):
+        if any(name.endswith(ext) for ext in preferred_extensions):
             return asset
     return None
 
@@ -564,15 +592,19 @@ def _fetch_latest_release(repo: str):
     tag_name = str(release.get("tag_name") or "").strip()
     if not tag_name:
         raise RuntimeError("Latest release is missing tag_name.")
-    version = tag_name[1:] if tag_name.lower().startswith("v") else tag_name
     asset = _select_release_asset(release)
     if not asset:
-        raise RuntimeError("No .pkg asset found on latest release.")
+        expected = ".exe" if IS_WINDOWS else ".pkg"
+        raise RuntimeError(f"No {expected} asset found on latest release.")
+    asset_name = str(asset.get("name") or "")
+    version = _extract_version_from_asset_name(asset_name)
+    if not version:
+        version = tag_name[1:] if tag_name.lower().startswith("v") else tag_name
     return {
         "version": version,
         "release_name": str(release.get("name") or tag_name),
         "release_notes": str(release.get("body") or ""),
-        "asset_name": str(asset.get("name") or ""),
+        "asset_name": asset_name,
         "asset_url": str(asset.get("browser_download_url") or ""),
     }
 
@@ -581,7 +613,9 @@ def _download_update_asset(asset_name: str, asset_url: str, version: str) -> str
     if not asset_url:
         raise RuntimeError("Update asset URL is missing.")
     safe_name = f"NailQue-macOS-{version}.pkg"
-    if asset_name.endswith(".pkg"):
+    if IS_WINDOWS:
+        safe_name = f"NailQue-Setup-{version}.exe"
+    if (not IS_WINDOWS and asset_name.endswith(".pkg")) or (IS_WINDOWS and asset_name.endswith(".exe")):
         safe_name = asset_name
     target = UPDATES_DIR / safe_name
     temp_target = target.with_suffix(target.suffix + ".partial")
@@ -655,24 +689,45 @@ def get_update_status():
 
 def install_downloaded_update():
     status = get_update_status()
-    pkg_path = status.get("downloaded_path") or ""
-    if not pkg_path or not Path(pkg_path).exists():
+    installer_path = status.get("downloaded_path") or ""
+    if not installer_path or not Path(installer_path).exists():
         raise RuntimeError("No downloaded update package available.")
     latest_version = str(status.get("latest_version") or "").strip()
     downloaded_version = str(status.get("downloaded_version") or "").strip()
     if latest_version and downloaded_version and latest_version != downloaded_version:
         raise RuntimeError("Downloaded package is outdated. Run CHECK UPDATES first.")
-    escaped_path = pkg_path.replace("\\", "\\\\").replace('"', '\\"')
-    # Ensure we relaunch the newly-installed binary, not an already-running old process.
-    script = (
-        'do shell script '
-        f'"installer -pkg \\"{escaped_path}\\" -target / && '
-        f'(pkill -x NailQue || true) && '
-        f'(pkill -f \\"/Applications/NailQue.app/Contents/MacOS/NailQue\\" || true) && '
-        f'sleep 1 && open -n \\"/Applications/NailQue.app\\"" '
-        "with administrator privileges"
-    )
-    process = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=False)
+    if IS_WINDOWS:
+        escaped_path = installer_path.replace("'", "''")
+        launch_candidate = str(Path(sys.executable)) if getattr(sys, "frozen", False) else ""
+        launch_fallback = str(Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "NailQue" / "NailQue.exe")
+        launch_candidate_escaped = launch_candidate.replace("'", "''")
+        launch_fallback_escaped = launch_fallback.replace("'", "''")
+        script = (
+            f"$installer = '{escaped_path}'; "
+            "Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/NORESTART','/CLOSEAPPLICATIONS' -Verb RunAs -Wait; "
+            f"$candidate = '{launch_candidate_escaped}'; "
+            f"$fallback = '{launch_fallback_escaped}'; "
+            "if ($candidate -and (Test-Path $candidate)) { Start-Process -FilePath $candidate } "
+            "elseif (Test-Path $fallback) { Start-Process -FilePath $fallback }"
+        )
+        process = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    else:
+        escaped_path = installer_path.replace("\\", "\\\\").replace('"', '\\"')
+        # Ensure we relaunch the newly-installed binary, not an already-running old process.
+        script = (
+            'do shell script '
+            f'"installer -pkg \\"{escaped_path}\\" -target / && '
+            f'(pkill -x NailQue || true) && '
+            f'(pkill -f \\"/Applications/NailQue.app/Contents/MacOS/NailQue\\" || true) && '
+            f'sleep 1 && open -n \\"/Applications/NailQue.app\\"" '
+            "with administrator privileges"
+        )
+        process = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=False)
     if process.returncode != 0:
         stderr = (process.stderr or "").strip() or "Update installation failed."
         raise RuntimeError(stderr)

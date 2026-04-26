@@ -1,8 +1,8 @@
-# Build macOS Installer
+# Build Release Artifacts
 
-This project is now streamlined for macOS distribution.
+This project supports both macOS and Windows packaging.
 
-## One-command build
+## macOS installer
 
 From the `luxe-nails` folder:
 
@@ -69,3 +69,30 @@ AUTO_UPDATE_INCLUDE_PRERELEASE=false
 ```
 
 The app checks in the background, downloads the latest `.pkg` release asset automatically, and exposes install controls in Tech Management.
+
+## Windows standalone + installer
+
+Run on a Windows machine:
+
+```powershell
+.\build-windows.ps1
+```
+
+Or double-click:
+
+```text
+build-windows.bat
+```
+
+Output:
+- `dist-installers/NailQue-Windows-Standalone-<version>.zip`
+- `dist-installers/NailQue-Setup-<version>.exe`
+- `dist-installers/NailQue-Setup.exe` (latest alias)
+
+Requirements:
+- Python 3.10+
+- Inno Setup 6 (or `INNO_SETUP_ISCC` environment variable pointing to `ISCC.exe`)
+
+Versioning:
+- macOS uses `VERSION`
+- Windows uses `VERSION.windows` (falls back to `VERSION` if missing)
