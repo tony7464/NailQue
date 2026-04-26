@@ -378,10 +378,11 @@ def _sanitize_manager_activity_entry(payload):
     }
 
 
-def _build_service_details(selected_service_indexes):
+def _build_service_details(selected_service_indexes, custom_addons=None):
     total = 0.0
     selected_indexes = []
     selected_services = []
+    normalized_addons = []
     for idx in selected_service_indexes:
         if not isinstance(idx, int):
             continue
@@ -391,10 +392,28 @@ def _build_service_details(selected_service_indexes):
         svc = SERVICES_MENU[idx]
         selected_services.append(svc["name"])
         total += float(svc["price"])
+    if isinstance(custom_addons, list):
+        for addon in custom_addons:
+            if not isinstance(addon, dict):
+                continue
+            name = str(addon.get("name") or "").strip()
+            if not name:
+                continue
+            try:
+                price = round(float(addon.get("price") or 0), 2)
+            except (TypeError, ValueError):
+                continue
+            if price < 0:
+                continue
+            normalized_addons.append({"name": name[:80], "price": price})
+            selected_services.append(f"{name[:80]} (Add-on)")
+            total += price
+    total = round(total, 2)
     return {
         "selectedServiceIndexes": selected_indexes,
         "selectedServices": selected_services,
-        "total": round(total, 2),
+        "customAddons": normalized_addons,
+        "total": total,
         "employeeShare": round(total * 0.6, 2),
     }
 
@@ -886,10 +905,11 @@ def services_record():
     tech_name = str(payload.get("tech") or "").strip()
     customer_name = str(payload.get("customer") or "Customer").strip() or "Customer"
     selected_indexes = payload.get("selectedServiceIndexes") or []
+    custom_addons = payload.get("customAddons") or []
     if not isinstance(selected_indexes, list):
         selected_indexes = []
     selected_indexes = [int(i) for i in selected_indexes if isinstance(i, int)]
-    details = _build_service_details(selected_indexes)
+    details = _build_service_details(selected_indexes, custom_addons)
     completed_at = str(payload.get("completedAt") or "") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     source = str(payload.get("source") or "frontdesk")
     record = {
@@ -897,6 +917,7 @@ def services_record():
         "customer": customer_name,
         "selectedServiceIndexes": details["selectedServiceIndexes"],
         "selectedServices": details["selectedServices"],
+        "customAddons": details["customAddons"],
         "total": details["total"],
         "employeeShare": details["employeeShare"],
         "completedAt": completed_at,
@@ -1087,16 +1108,18 @@ def mobile_action():
                 SHARED_STATE["bonusClockIns"] = bonus_clock_ins
         elif action == "finish_customer":
             selected_indexes_raw = payload.get("selectedServiceIndexes") or []
+            custom_addons = payload.get("customAddons") or []
             if not isinstance(selected_indexes_raw, list):
                 return jsonify({"ok": False, "error": "Service selection is invalid."}), 400
             selected_indexes = [int(i) for i in selected_indexes_raw if isinstance(i, int)]
-            details = _build_service_details(selected_indexes)
+            details = _build_service_details(selected_indexes, custom_addons)
             completed_customer_name = str(tech.get("current") or "Customer")
             completion_record = {
                 "tech": tech_name,
                 "customer": completed_customer_name,
                 "selectedServiceIndexes": details["selectedServiceIndexes"],
                 "selectedServices": details["selectedServices"],
+                "customAddons": details["customAddons"],
                 "total": details["total"],
                 "employeeShare": details["employeeShare"],
                 "completedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

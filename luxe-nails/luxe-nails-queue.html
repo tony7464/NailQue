@@ -104,8 +104,23 @@
         }
         .buttons .btn-finish {
             grid-column: 1 / -1;
+            min-height: 44px;
         }
-        .btn { font-size: 20px; font-weight: 600; padding: 14px 24px; border: none; border-radius: 9999px; cursor: pointer; transition: transform 0.16s ease, filter 0.16s ease, box-shadow 0.16s ease; }
+        .btn {
+            font-size: 20px;
+            font-weight: 600;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 9999px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            line-height: 1.05;
+            min-height: 52px;
+            transition: transform 0.16s ease, filter 0.16s ease, box-shadow 0.16s ease;
+        }
         .btn:hover { filter: brightness(1.06); box-shadow: 0 6px 16px rgba(0,0,0,0.24); }
         .btn:active { transform: translateY(1px) scale(0.99); filter: brightness(0.98); }
 
@@ -460,6 +475,16 @@
                 <div id="serviceList" style="max-height:380px;overflow-y:auto;"></div>
             </div>
 
+            <div style="background:#2a221b;padding:14px;border-radius:12px;margin-top:10px;">
+                <div style="color:#d4af77;font-weight:700;margin-bottom:8px;">Custom Add-on</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <input id="customAddonNameInput" class="text-input" type="text" placeholder="Add-on name (e.g. Chrome design)" style="flex:1;min-width:220px;margin-bottom:0;">
+                    <input id="customAddonPriceInput" class="text-input" type="number" min="0" step="0.01" placeholder="Price" style="width:120px;margin-bottom:0;">
+                    <button type="button" class="btn-small" onclick="addCustomAddonToFinish()" style="background:#2d5b4a;color:#f5f0e8;white-space:nowrap;">ADD ADD-ON</button>
+                </div>
+                <div id="customAddonList" style="margin-top:10px;"></div>
+            </div>
+
             <div style="background:#2a221b;padding:20px;border-radius:16px;margin:20px 0;">
                 <div style="display:flex;justify-content:space-between;font-size:24px;">
                     <span>Total Bill</span>
@@ -637,6 +662,7 @@
         };
         let waitingQueue = [];
         let currentFinishingTech = null;
+        let finishCustomAddons = [];
         let nextCustomerId = 1;
         let bonusOrder = [];
 
@@ -1449,6 +1475,7 @@
                         tech: entry.tech,
                         customer: entry.customer,
                         selectedServiceIndexes: entry.selectedServiceIndexes || [],
+                        customAddons: entry.customAddons || [],
                         completedAt: entry.completedAt,
                         source: "frontdesk"
                     })
@@ -2020,6 +2047,7 @@
             currentFinishingTech = techName;
             document.getElementById("finishTechName").textContent = techName;
             document.getElementById("finishCustomerNameDisplay").textContent = tech.current || "Customer";
+            finishCustomAddons = [];
             let html = "";
             servicesMenu.forEach((service, i) => {
                 const isNailArt = service.name === "Nail Art (per nail)";
@@ -2043,9 +2071,58 @@
                 </div>`;
             });
             document.getElementById("serviceList").innerHTML = html;
+            renderFinishCustomAddonList();
+            document.getElementById("customAddonNameInput").value = "";
+            document.getElementById("customAddonPriceInput").value = "";
             document.getElementById("totalAmount").textContent = "$0.00";
             document.getElementById("employeeEarnings").textContent = "$0.00";
             document.getElementById("finishModal").style.display = "flex";
+        }
+
+        function renderFinishCustomAddonList() {
+            const list = document.getElementById("customAddonList");
+            if (!list) return;
+            if (!finishCustomAddons.length) {
+                list.innerHTML = `<div style="color:#a58f6b;font-size:13px;">No custom add-ons yet.</div>`;
+                return;
+            }
+            list.innerHTML = finishCustomAddons.map((addon, idx) => {
+                return `<div class="activity-row" style="background:#1f1914;border-radius:10px;padding:8px 10px;margin-bottom:6px;"><span>${escapeHtml(addon.name)} • $${Number(addon.price || 0).toFixed(2)}</span><button type="button" class="btn-small" onclick="removeCustomAddonFromFinish(${idx})" style="background:#6b3030;color:#f5f0e8;">Remove</button></div>`;
+            }).join("");
+        }
+
+        function addCustomAddonToFinish() {
+            const nameInput = document.getElementById("customAddonNameInput");
+            const priceInput = document.getElementById("customAddonPriceInput");
+            if (!nameInput || !priceInput) return;
+            const name = String(nameInput.value || "").trim();
+            const price = Number(priceInput.value || 0);
+            if (!name) {
+                showActionToast("Enter an add-on name.", true);
+                return;
+            }
+            if (!Number.isFinite(price) || price < 0) {
+                showActionToast("Enter a valid add-on price.", true);
+                return;
+            }
+            finishCustomAddons.push({ name: name.slice(0, 80), price: Number(price.toFixed(2)) });
+            nameInput.value = "";
+            priceInput.value = "";
+            renderFinishCustomAddonList();
+            calculateTotal();
+        }
+
+        function removeCustomAddonFromFinish(index) {
+            finishCustomAddons = finishCustomAddons.filter((_, idx) => idx !== index);
+            renderFinishCustomAddonList();
+            calculateTotal();
+        }
+
+        function getFinishCustomAddons() {
+            return finishCustomAddons.map((addon) => ({
+                name: String(addon.name || "").trim(),
+                price: Number(addon.price || 0),
+            })).filter((addon) => addon.name && Number.isFinite(addon.price) && addon.price >= 0);
         }
 
         function calculateTotal() {
@@ -2061,6 +2138,9 @@
                 } else {
                     total += service.price;
                 }
+            });
+            getFinishCustomAddons().forEach((addon) => {
+                total += Number(addon.price || 0);
             });
             document.getElementById("totalAmount").textContent = `$${total.toFixed(2)}`;
             document.getElementById("employeeEarnings").textContent = `$${(total * 0.6).toFixed(2)}`;
@@ -2083,11 +2163,13 @@
             const selectedServiceIndexes = Array.from(document.querySelectorAll("#serviceList input:checked"))
                 .map((cb) => parseInt(cb.dataset.index, 10))
                 .filter((idx) => Number.isInteger(idx) && servicesMenu[idx]);
-            if (selectedServiceIndexes.length === 0) {
+            const customAddons = getFinishCustomAddons();
+            if (selectedServiceIndexes.length === 0 && customAddons.length === 0) {
                 const proceed = confirm("No services selected. Complete service with $0 total?");
                 if (!proceed) return;
             }
-            const selectedServices = selectedServiceIndexes.map((idx) => servicesMenu[idx].name);
+            const selectedServices = selectedServiceIndexes.map((idx) => servicesMenu[idx].name)
+                .concat(customAddons.map((addon) => `${addon.name} (Add-on)`));
             const employeeShare = total * 0.6;
 
             tech.earnings = (tech.earnings || 0) + employeeShare;
@@ -2098,12 +2180,14 @@
                 employeeShare,
                 selectedServiceIndexes,
                 selectedServices,
+                customAddons,
                 completedAt: new Date().toISOString()
             });
             recordServiceHistoryFromFrontDesk({
                 tech: currentFinishingTech,
                 customer: tech.current || "Customer",
                 selectedServiceIndexes,
+                customAddons,
                 completedAt: new Date().toISOString()
             });
             tech.status = "Available";
@@ -2115,6 +2199,7 @@
             localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
             document.getElementById("finishModal").style.display = "none";
             document.getElementById("finishTechName").textContent = "";
+            finishCustomAddons = [];
             currentFinishingTech = null;
             saveQueueState();
             autoAssign();
@@ -2124,6 +2209,7 @@
 
         function cancelFinishModal() {
             currentFinishingTech = null;
+            finishCustomAddons = [];
             document.getElementById("finishTechName").textContent = "";
             document.getElementById("finishModal").style.display = "none";
         }
