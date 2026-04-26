@@ -111,6 +111,19 @@
             justify-content: space-between;
             align-items: center;
             gap: 10px;
+            transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 220ms ease;
+            will-change: transform;
+        }
+        .queue-item-moving {
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32);
+            z-index: 2;
+            position: relative;
+            animation: queueItemPop 360ms cubic-bezier(0.2, 0.95, 0.32, 1);
+        }
+        @keyframes queueItemPop {
+            0% { transform: scale(0.985); }
+            45% { transform: scale(1.02); }
+            100% { transform: scale(1); }
         }
         .appt-badge {
             display: inline-block;
@@ -621,6 +634,7 @@
         let mobileAccessUrl = "";
         let currentManagerUsername = "";
         let currentManagerFullName = "";
+        let queueListAnimationFrame = 0;
         const soundFx = {
             startup: "/assets/sounds/startup_fx.mp3",
             click: "/assets/sounds/click_fx.mp3",
@@ -931,21 +945,51 @@
                 queue.innerHTML = `<div style="color:#a58f6b; text-align:center; padding:14px;">No customers waiting</div>`;
                 return;
             }
+            const previousTops = new Map();
+            queue.querySelectorAll(".queue-item[data-customer-id]").forEach((item) => {
+                previousTops.set(item.dataset.customerId, item.getBoundingClientRect().top);
+            });
 
-            queue.innerHTML = waitingQueue
-                .map((customer, idx) => {
-                    const waitMins = Math.max(0, Math.round((Date.now() - customer.arrival) / 60000));
-                    const appointmentText = customer.appointmentTime ? ` • ${formatAppointmentLabel(customer.appointmentTime)}` : "";
-                    const requestedTechText = customer.requestedTech ? ` • Request: ${escapeHtml(customer.requestedTech)}` : "";
-                    const detailText = `${appointmentText}${requestedTechText}`;
-                    const appointmentBadge = customer.appointmentTime ? `<span class="appt-badge">APPT</span>` : "";
-                    return `
-                    <div class="queue-item">
-                        <div><strong>#${idx + 1}</strong> ${customer.name}${appointmentBadge}${detailText ? `<div style="font-size:12px;color:#a58f6b;margin-top:4px;">${detailText}</div>` : ""}</div>
-                        <div style="color:#d4af77;">${waitMins} min</div>
-                    </div>`;
-                })
-                .join("");
+            queue.innerHTML = "";
+            const fragment = document.createDocumentFragment();
+            waitingQueue.forEach((customer, idx) => {
+                const waitMins = Math.max(0, Math.round((Date.now() - customer.arrival) / 60000));
+                const appointmentText = customer.appointmentTime ? ` • ${formatAppointmentLabel(customer.appointmentTime)}` : "";
+                const requestedTechText = customer.requestedTech ? ` • Request: ${escapeHtml(customer.requestedTech)}` : "";
+                const detailText = `${appointmentText}${requestedTechText}`;
+                const appointmentBadge = customer.appointmentTime ? `<span class="appt-badge">APPT</span>` : "";
+                const row = document.createElement("div");
+                row.className = "queue-item";
+                row.dataset.customerId = String(customer.id ?? `${customer.name}-${customer.arrival}-${idx}`);
+                row.innerHTML = `
+                    <div><strong>#${idx + 1}</strong> ${customer.name}${appointmentBadge}${detailText ? `<div style="font-size:12px;color:#a58f6b;margin-top:4px;">${detailText}</div>` : ""}</div>
+                    <div style="color:#d4af77;">${waitMins} min</div>
+                `;
+                fragment.appendChild(row);
+            });
+            queue.appendChild(fragment);
+
+            if (queueListAnimationFrame) {
+                cancelAnimationFrame(queueListAnimationFrame);
+            }
+            queueListAnimationFrame = requestAnimationFrame(() => {
+                queue.querySelectorAll(".queue-item[data-customer-id]").forEach((item) => {
+                    const id = item.dataset.customerId;
+                    const beforeTop = previousTops.get(id);
+                    if (beforeTop === undefined) return;
+                    const afterTop = item.getBoundingClientRect().top;
+                    const deltaY = beforeTop - afterTop;
+                    if (Math.abs(deltaY) < 1) return;
+                    item.style.transform = `translateY(${deltaY}px)`;
+                    item.classList.add("queue-item-moving");
+                    requestAnimationFrame(() => {
+                        item.style.transform = "translateY(0)";
+                    });
+                    setTimeout(() => {
+                        item.classList.remove("queue-item-moving");
+                    }, 380);
+                });
+            });
         }
 
         function statusBadgeForTech(tech) {
@@ -1154,6 +1198,34 @@
             managerActivityLog = managerActivityLog.slice(0, 80);
             localStorage.setItem(managerActivityLogKey, JSON.stringify(managerActivityLog));
             renderManagerActivityLog();
+            persistManagerActivityEntry(entry);
+        }
+
+        async function fetchManagerActivityLog() {
+            try {
+                const response = await fetch("/api/manager/activity");
+                const data = await response.json();
+                if (!response.ok || !data.ok) throw new Error(data.error || "Could not load manager activity log.");
+                const records = Array.isArray(data.records) ? data.records : [];
+                managerActivityLog = records.slice().reverse().slice(0, 80);
+                localStorage.setItem(managerActivityLogKey, JSON.stringify(managerActivityLog));
+                renderManagerActivityLog();
+                return true;
+            } catch (error) {
+                return false;
+            }
+        }
+
+        async function persistManagerActivityEntry(entry) {
+            try {
+                await fetch("/api/manager/activity", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(entry)
+                });
+            } catch (error) {
+                // Local log remains as fallback if server write fails.
+            }
         }
 
         function formatUpdateTimestamp(unixSeconds) {
@@ -1382,6 +1454,15 @@
             renderManagerActivityLog();
             showManagerMessage("Manager activity log cleared.");
             showActionToast("Manager activity log cleared.", false);
+            clearManagerActivityOnServer();
+        }
+
+        async function clearManagerActivityOnServer() {
+            try {
+                await fetch("/api/manager/activity", { method: "DELETE" });
+            } catch (error) {
+                // Ignore delete failures; local clear already completed.
+            }
         }
 
         async function copyManagerActivityLog() {
@@ -1461,7 +1542,8 @@
             }
         }
 
-        function exportSalonData() {
+        async function exportSalonData() {
+            await fetchManagerActivityLog();
             const payload = {
                 exportedAt: new Date().toISOString(),
                 app: "NailQue",
@@ -1517,6 +1599,7 @@
             }
             if (Array.isArray(data.managerActivityLog)) {
                 localStorage.setItem(managerActivityLogKey, JSON.stringify(data.managerActivityLog));
+                replaceManagerActivityOnServer(data.managerActivityLog);
             }
             if (Array.isArray(data.nailTechNames)) {
                 localStorage.setItem("nailTechNames", JSON.stringify(data.nailTechNames));
@@ -1526,6 +1609,23 @@
             }
             if (data.theme === "light" || data.theme === "dark") {
                 localStorage.setItem(queueThemeKey, data.theme);
+            }
+        }
+
+        async function replaceManagerActivityOnServer(records) {
+            try {
+                const response = await fetch("/api/manager/activity", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ records: Array.isArray(records) ? records : [] })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.error || "Could not replace manager activity log.");
+                }
+                await fetchManagerActivityLog();
+            } catch (error) {
+                // Imported local backup still applies even if server replacement fails.
             }
         }
 
@@ -2268,6 +2368,7 @@
         async function init() {
             loadQueueState();
             loadBonusSettings();
+            await fetchManagerActivityLog();
             const loadedFromServer = await fetchSharedStateFromServer();
             initializeSharedTechConfig();
             if (!loadedFromServer) {
