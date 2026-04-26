@@ -699,8 +699,6 @@ def create_manager_account():
     full_name = str(payload.get("fullName") or "").strip()
     username = str(payload.get("username") or "").strip().lower()
     pin = str(payload.get("pin") or "").strip()
-    auth_username = str(payload.get("authUsername") or "").strip().lower()
-    auth_pin = str(payload.get("authPin") or "").strip()
     if not full_name:
         return jsonify({"error": "Full name is required."}), 400
     if " " not in full_name:
@@ -709,15 +707,11 @@ def create_manager_account():
         return jsonify({"error": "Username must use letters, numbers, dashes, or underscores."}), 400
     if not pin.isdigit() or len(pin) < 4:
         return jsonify({"error": "PIN must be at least 4 digits."}), 400
-    if not auth_username or not auth_pin:
-        return jsonify({"error": "Manager authentication is required."}), 401
-    if not _find_manager(auth_username, auth_pin):
-        return jsonify({"error": "Authorization failed."}), 401
     try:
         _create_manager_account(full_name, username, pin)
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
-    app.logger.info("Manager account created for %s by %s", username, auth_username)
+    app.logger.info("Manager account created for %s", username)
     return jsonify({"ok": True})
 
 
