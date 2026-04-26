@@ -647,8 +647,10 @@ def install_downloaded_update():
     # Ensure we relaunch the newly-installed binary, not an already-running old process.
     script = (
         'do shell script '
-        f'"installer -pkg \\"{escaped_path}\\" -target / && (pkill -x NailQue || true) && '
-        f'sleep 1 && open \\"/Applications/NailQue.app\\"" '
+        f'"installer -pkg \\"{escaped_path}\\" -target / && '
+        f'(pkill -x NailQue || true) && '
+        f'(pkill -f \\"/Applications/NailQue.app/Contents/MacOS/NailQue\\" || true) && '
+        f'sleep 1 && open -n \\"/Applications/NailQue.app\\"" '
         "with administrator privileges"
     )
     process = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=False)
