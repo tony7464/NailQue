@@ -112,6 +112,7 @@
         let techName = localStorage.getItem("mobileTechName") || "";
         let servicesMenu = [];
         let currentTechState = {};
+        let mobileCustomAddons = [];
         let hadActiveCustomer = false;
         let hasRenderedState = false;
 
@@ -144,6 +145,9 @@
             hadActiveCustomer = hasActiveCustomer;
             hasRenderedState = true;
             document.getElementById("serviceCard").classList.toggle("hidden", !hasActiveCustomer);
+            if (!hasActiveCustomer) {
+                mobileCustomAddons = [];
+            }
             document.getElementById("appCard").classList.toggle("tech-has-customer", hasActiveCustomer);
             document.getElementById("unreadyBtn").classList.toggle("btn-offline-active", status === "Offline");
             const customerToneClass = hasActiveCustomer ? "tech-customer-name" : "";
@@ -228,9 +232,66 @@
                 list.innerHTML = `<div class="tiny">No services loaded.</div>`;
                 return;
             }
-            list.innerHTML = servicesMenu.map((svc, idx) => {
+            const servicesHtml = servicesMenu.map((svc, idx) => {
                 return `<label class="service-row"><input type="checkbox" data-svc="${idx}"><span>${svc.name}</span><span class="tiny">$${svc.price}</span></label>`;
             }).join("");
+            const addOnHtml = `
+                <div style="margin-top:10px;padding-top:10px;border-top:1px solid #3d2a1f;">
+                    <div class="tiny" style="margin-bottom:8px;color:#d4af77;">Custom Add-on</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <input id="mobileAddonName" class="input" type="text" placeholder="Add-on name" style="flex:1;min-width:160px;margin-bottom:0;">
+                        <input id="mobileAddonPrice" class="input" type="number" min="0" step="0.01" placeholder="Price" style="width:110px;margin-bottom:0;">
+                    </div>
+                    <button type="button" class="btn btn-muted" style="margin-top:8px;margin-bottom:0;" onclick="addMobileCustomAddon()">ADD CUSTOM ADD-ON</button>
+                    <div id="mobileAddonList" style="margin-top:8px;"></div>
+                </div>
+            `;
+            list.innerHTML = `${servicesHtml}${addOnHtml}`;
+            renderMobileCustomAddonList();
+        }
+
+        function renderMobileCustomAddonList() {
+            const list = document.getElementById("mobileAddonList");
+            if (!list) return;
+            if (!mobileCustomAddons.length) {
+                list.innerHTML = `<div class="tiny">No custom add-ons yet.</div>`;
+                return;
+            }
+            list.innerHTML = mobileCustomAddons.map((addon, idx) => {
+                return `<div class="queue-item"><strong>${addon.name}</strong> <span class="tiny">• $${Number(addon.price || 0).toFixed(2)}</span> <button type="button" class="btn btn-muted" style="width:auto;padding:6px 10px;margin:0 0 0 8px;font-size:12px;" onclick="removeMobileCustomAddon(${idx})">Remove</button></div>`;
+            }).join("");
+        }
+
+        function addMobileCustomAddon() {
+            const nameInput = document.getElementById("mobileAddonName");
+            const priceInput = document.getElementById("mobileAddonPrice");
+            if (!nameInput || !priceInput) return;
+            const name = String(nameInput.value || "").trim();
+            const price = Number(priceInput.value || 0);
+            if (!name) {
+                alert("Please enter a custom add-on name.");
+                return;
+            }
+            if (!Number.isFinite(price) || price < 0) {
+                alert("Please enter a valid custom add-on price.");
+                return;
+            }
+            mobileCustomAddons.push({ name: name.slice(0, 80), price: Number(price.toFixed(2)) });
+            nameInput.value = "";
+            priceInput.value = "";
+            renderMobileCustomAddonList();
+        }
+
+        function removeMobileCustomAddon(index) {
+            mobileCustomAddons = mobileCustomAddons.filter((_, idx) => idx !== index);
+            renderMobileCustomAddonList();
+        }
+
+        function getMobileCustomAddons() {
+            return mobileCustomAddons.map((addon) => ({
+                name: String(addon.name || "").trim(),
+                price: Number(addon.price || 0),
+            })).filter((addon) => addon.name && Number.isFinite(addon.price) && addon.price >= 0);
         }
 
         function renderHistory(records) {
@@ -251,6 +312,53 @@
             return Array.from(document.querySelectorAll("#servicesList input[type='checkbox']:checked"))
                 .map((input) => parseInt(input.dataset.svc || "-1", 10))
                 .filter((value) => Number.isInteger(value) && value >= 0);
+        }
+
+        function buildServiceRecap(selectedIndexes, customAddons) {
+            const validIndexes = Array.isArray(selectedIndexes) ? selectedIndexes : [];
+            const lines = [];
+            let total = 0;
+            validIndexes.forEach((idx) => {
+                const svc = servicesMenu[idx];
+                if (!svc) return;
+                const price = Number(svc.price || 0);
+                total += price;
+                lines.push(`- ${svc.name}: $${price.toFixed(2)}`);
+            });
+            if (Array.isArray(customAddons)) {
+                customAddons.forEach((addon) => {
+                    const addonName = String((addon || {}).name || "").trim();
+                    const addonPrice = Number((addon || {}).price || 0);
+                    if (!addonName || !Number.isFinite(addonPrice) || addonPrice < 0) return;
+                    total += addonPrice;
+                    lines.push(`- ${addonName} (Add-on): $${addonPrice.toFixed(2)}`);
+                });
+            }
+            const roundedTotal = Number(total.toFixed(2));
+            const employeeShare = Number((roundedTotal * 0.6).toFixed(2));
+            return {
+                lines,
+                total: roundedTotal,
+                employeeShare,
+            };
+        }
+
+        function confirmFinishCustomer(selectedIndexes, customAddons) {
+            const recap = buildServiceRecap(selectedIndexes, customAddons);
+            const selectedCount = recap.lines.length;
+            const serviceList = selectedCount ? recap.lines.join("\n") : "- No services selected";
+            const message = [
+                "Please verify service selection before finishing this customer.",
+                "",
+                `Services checked: ${selectedCount}`,
+                serviceList,
+                "",
+                `Customer total: $${recap.total.toFixed(2)}`,
+                `Nail tech pay (60%): $${recap.employeeShare.toFixed(2)}`,
+                "",
+                "Tap OK to confirm and finish customer."
+            ].join("\n");
+            return window.confirm(message);
         }
 
         async function login() {
@@ -343,6 +451,10 @@
                         throw new Error("You are not serving a customer right now.");
                     }
                     payload.selectedServiceIndexes = getSelectedServiceIndexes();
+                    payload.customAddons = getMobileCustomAddons();
+                    if (!confirmFinishCustomer(payload.selectedServiceIndexes, payload.customAddons)) {
+                        return;
+                    }
                 }
                 const response = await fetch("/api/mobile/action", {
                     method: "POST",
