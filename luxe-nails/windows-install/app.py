@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, make_response
 import base64
 import json
 import ipaddress
@@ -1169,12 +1169,20 @@ def mobile_active_techs():
 
 @app.route("/")
 def main_queue():
-    return send_from_directory(ASSETS_DIR, "luxe-nails-queue.html")
+    response = make_response(send_from_directory(ASSETS_DIR, "luxe-nails-queue.html"))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @app.route("/employee")
 def employee_portal():
-    return send_from_directory(ASSETS_DIR, "luxe-nails-employee.html")
+    response = make_response(send_from_directory(ASSETS_DIR, "luxe-nails-employee.html"))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @app.route("/mobile")
@@ -1182,7 +1190,11 @@ def mobile_portal():
     blocked = _mobile_requires_lan()
     if blocked:
         return blocked
-    return send_from_directory(ASSETS_DIR, "luxe-nails-mobile.html")
+    response = make_response(send_from_directory(ASSETS_DIR, "luxe-nails-mobile.html"))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @app.route("/<path:path>")
