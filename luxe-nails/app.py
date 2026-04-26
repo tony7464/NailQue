@@ -98,6 +98,7 @@ SHARED_STATE_LOCK = threading.Lock()
 SHARED_STATE_FILE = RUNTIME_DIR / "shared_state.json"
 SHARED_STATE = {}
 SERVICE_HISTORY_FILE = RUNTIME_DIR / "service_history.json"
+MANAGER_ACTIVITY_FILE = RUNTIME_DIR / "manager_activity_log.json"
 SERVICES_MENU = [
     {"name": "Spa Manicure", "price": 40},
     {"name": "Signature Manicure", "price": 50},
@@ -338,6 +339,43 @@ def _append_service_history(record):
     records.append(record)
     records = records[-1000:]
     _write_json_atomic(SERVICE_HISTORY_FILE, records)
+
+
+def _read_manager_activity():
+    records = _read_json(MANAGER_ACTIVITY_FILE, [])
+    if not isinstance(records, list):
+        return []
+    return records
+
+
+def _append_manager_activity(record):
+    records = _read_manager_activity()
+    records.append(record)
+    records = records[-300:]
+    _write_json_atomic(MANAGER_ACTIVITY_FILE, records)
+
+
+def _clear_manager_activity():
+    _write_json_atomic(MANAGER_ACTIVITY_FILE, [])
+
+
+def _sanitize_manager_activity_entry(payload):
+    if not isinstance(payload, dict):
+        return None
+    message = str(payload.get("message") or "").strip()
+    if not message:
+        return None
+    actor = str(payload.get("actor") or "Manager").strip() or "Manager"
+    level = str(payload.get("level") or "info").strip().lower()
+    timestamp = str(payload.get("timestamp") or "").strip() or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if level not in {"info", "success", "error"}:
+        level = "info"
+    return {
+        "message": message[:500],
+        "actor": actor[:120],
+        "level": level,
+        "timestamp": timestamp,
+    }
 
 
 def _build_service_details(selected_service_indexes):
@@ -726,6 +764,44 @@ def create_manager_account():
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
     app.logger.info("Manager account created for %s", username)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/manager/activity", methods=["GET"])
+def manager_activity_list():
+    records = _read_manager_activity()
+    return jsonify({"ok": True, "records": records[-120:]})
+
+
+@app.route("/api/manager/activity", methods=["POST"])
+def manager_activity_add():
+    payload = request.get_json(silent=True) or {}
+    entry = _sanitize_manager_activity_entry(payload)
+    if not entry:
+        return jsonify({"ok": False, "error": "Message is required."}), 400
+    _append_manager_activity(entry)
+    return jsonify({"ok": True, "record": entry})
+
+
+@app.route("/api/manager/activity", methods=["PUT"])
+def manager_activity_replace():
+    payload = request.get_json(silent=True) or {}
+    incoming = payload.get("records")
+    if not isinstance(incoming, list):
+        return jsonify({"ok": False, "error": "records must be an array."}), 400
+    sanitized = []
+    for item in incoming:
+        entry = _sanitize_manager_activity_entry(item)
+        if entry:
+            sanitized.append(entry)
+    sanitized = sanitized[-300:]
+    _write_json_atomic(MANAGER_ACTIVITY_FILE, sanitized)
+    return jsonify({"ok": True, "count": len(sanitized)})
+
+
+@app.route("/api/manager/activity", methods=["DELETE"])
+def manager_activity_clear():
+    _clear_manager_activity()
     return jsonify({"ok": True})
 
 
