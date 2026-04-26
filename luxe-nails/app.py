@@ -1006,7 +1006,11 @@ def mobile_state():
     bonus_clock_ins = state.get("bonusClockIns") or {}
     bonus_order = [
         name for name in sorted(
-            [name for name, details in techs.items() if str((details or {}).get("status") or "Offline") == "Available"],
+            [
+                name for name, details in techs.items()
+                if str((details or {}).get("status") or "Offline") == "Available"
+                and int(bonus_clock_ins.get(name) or 0) > 0
+            ],
             key=lambda name: int(bonus_clock_ins.get(name) or (10**15)),
         )
     ]
