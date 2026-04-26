@@ -505,7 +505,7 @@
             <div class="section-title">Manager Accounts</div>
             <input id="newManagerFullNameInput" class="text-input" type="text" placeholder="Full name (e.g., Maria Lopez)" />
             <input id="newManagerUsernameInput" class="text-input" type="text" placeholder="Username (e.g., mlopez)" />
-            <input id="newManagerPinInput" class="text-input" type="password" inputmode="numeric" placeholder="PIN (min 4 digits)" />
+            <input id="newManagerCreatePinInput" class="text-input" type="password" inputmode="numeric" placeholder="PIN (min 4 digits)" />
             <button onclick="createManagerAccount()" style="width:100%;background:#2d4f75;color:#f5f0e8;font-size:16px;font-weight:700;padding:10px;border:none;border-radius:9999px;cursor:pointer;">CREATE MANAGER ACCOUNT</button>
             <div class="activity-log" style="margin-top:10px;">
                 <div id="managerAccountsPanel" style="color:#a58f6b;font-size:13px;">Loading manager accounts...</div>
@@ -1434,7 +1434,7 @@
         async function createManagerAccount() {
             const fullName = document.getElementById("newManagerFullNameInput").value.trim();
             const username = document.getElementById("newManagerUsernameInput").value.trim().toLowerCase();
-            const pin = document.getElementById("newManagerPinInput").value.trim();
+            const pin = document.getElementById("newManagerCreatePinInput").value.trim();
             if (!fullName || !username || !pin) {
                 showManagerMessage("Enter full name, username, and PIN for new manager.", true);
                 return;
@@ -1449,7 +1449,7 @@
                 if (!response.ok || !data.ok) throw new Error(data.error || "Could not create manager account.");
                 document.getElementById("newManagerFullNameInput").value = "";
                 document.getElementById("newManagerUsernameInput").value = "";
-                document.getElementById("newManagerPinInput").value = "";
+                document.getElementById("newManagerCreatePinInput").value = "";
                 showManagerMessage(`Manager account created for ${fullName}.`);
                 showActionToast(`Manager account created: ${username}`, false);
                 addManagerActivity(`Created manager account for ${fullName} (${username}).`, "success");
