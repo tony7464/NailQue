@@ -368,17 +368,78 @@ def _write_manager_settings(settings):
     _write_json_atomic(MANAGER_SETTINGS_FILE, settings)
 
 
-def _get_manager_pin():
+def _normalize_manager_accounts(settings):
+    managers = settings.get("managers")
+    normalized = []
+    if isinstance(managers, list):
+        for item in managers:
+            if not isinstance(item, dict):
+                continue
+            username = str(item.get("username") or "").strip().lower()
+            full_name = str(item.get("fullName") or "").strip()
+            pin = str(item.get("pin") or "").strip()
+            if not username or not full_name or not pin:
+                continue
+            normalized.append({"username": username, "fullName": full_name, "pin": pin})
+    return normalized
+
+
+def _get_manager_accounts():
     settings = _read_manager_settings()
-    if settings.get("pin"):
-        return str(settings.get("pin"))
+    managers = _normalize_manager_accounts(settings)
+    if managers:
+        return managers
+    legacy_pin = str(settings.get("pin") or "").strip()
+    default_name = str(os.getenv("MANAGER_FULL_NAME", "Salon Manager")).strip() or "Salon Manager"
+    default_username = str(os.getenv("MANAGER_USERNAME", "manager")).strip().lower() or "manager"
+    default_pin = legacy_pin or os.getenv("MANAGER_PIN", "1234")
+    managers = [{"username": default_username, "fullName": default_name, "pin": str(default_pin)}]
+    _write_manager_settings({"managers": managers})
+    return managers
+
+
+def _find_manager(username: str, pin: str):
+    normalized_username = str(username or "").strip().lower()
+    normalized_pin = str(pin or "").strip()
+    for manager in _get_manager_accounts():
+        if manager["username"] == normalized_username and manager["pin"] == normalized_pin:
+            return manager
+    return None
+
+
+def _get_manager_pin():
+    managers = _get_manager_accounts()
+    if managers:
+        return str(managers[0]["pin"])
     default_pin = os.getenv("MANAGER_PIN", "1234")
-    _write_manager_settings({"pin": default_pin})
     return str(default_pin)
 
 
-def _set_manager_pin(new_pin):
-    _write_manager_settings({"pin": str(new_pin)})
+def _set_manager_pin(username: str, new_pin: str):
+    managers = _get_manager_accounts()
+    normalized_username = str(username or "").strip().lower()
+    updated = False
+    for manager in managers:
+        if manager["username"] == normalized_username:
+            manager["pin"] = str(new_pin)
+            updated = True
+            break
+    if not updated:
+        raise ValueError("Manager account not found.")
+    _write_manager_settings({"managers": managers})
+
+
+def _create_manager_account(full_name: str, username: str, pin: str):
+    managers = _get_manager_accounts()
+    normalized_username = str(username or "").strip().lower()
+    if any(manager["username"] == normalized_username for manager in managers):
+        raise ValueError("Username already exists.")
+    managers.append({
+        "username": normalized_username,
+        "fullName": str(full_name or "").strip(),
+        "pin": str(pin or "").strip(),
+    })
+    _write_manager_settings({"managers": managers})
 
 
 def _normalize_version(value: str):
@@ -597,24 +658,60 @@ def health():
 
 @app.route("/api/manager/verify-pin", methods=["POST"])
 def verify_manager_pin():
-    entered = str((request.get_json(silent=True) or {}).get("pin") or "")
-    manager_pin = _get_manager_pin()
-    return jsonify({"ok": entered == manager_pin})
+    payload = request.get_json(silent=True) or {}
+    entered = str(payload.get("pin") or "")
+    username = str(payload.get("username") or "").strip().lower()
+    manager = _find_manager(username, entered)
+    if not manager and entered == _get_manager_pin():
+        manager = _get_manager_accounts()[0]
+    if not manager:
+        return jsonify({"ok": False})
+    return jsonify({"ok": True, "manager": {"username": manager["username"], "fullName": manager["fullName"]}})
 
 
 @app.route("/api/manager/set-pin", methods=["POST"])
 def set_manager_pin():
     payload = request.get_json(silent=True) or {}
+    username = str(payload.get("username") or "").strip().lower()
     current_pin = str(payload.get("currentPin") or "")
     new_pin = str(payload.get("newPin") or "")
 
-    if current_pin != _get_manager_pin():
+    manager = _find_manager(username, current_pin)
+    if not manager:
         return jsonify({"error": "Current PIN is incorrect."}), 400
     if not new_pin.isdigit() or len(new_pin) < 4:
         return jsonify({"error": "New PIN must be at least 4 digits."}), 400
 
-    _set_manager_pin(new_pin)
-    app.logger.info("Manager PIN updated")
+    _set_manager_pin(username, new_pin)
+    app.logger.info("Manager PIN updated for %s", username)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/manager/accounts", methods=["GET"])
+def get_manager_accounts():
+    managers = [{"username": m["username"], "fullName": m["fullName"]} for m in _get_manager_accounts()]
+    return jsonify({"ok": True, "managers": managers})
+
+
+@app.route("/api/manager/create-account", methods=["POST"])
+def create_manager_account():
+    payload = request.get_json(silent=True) or {}
+    full_name = str(payload.get("fullName") or "").strip()
+    username = str(payload.get("username") or "").strip().lower()
+    pin = str(payload.get("pin") or "").strip()
+    if not full_name:
+        return jsonify({"error": "Full name is required."}), 400
+    if " " not in full_name:
+        return jsonify({"error": "Full name must include first and last name."}), 400
+    if not username or not username.replace("_", "").replace("-", "").isalnum():
+        return jsonify({"error": "Username must use letters, numbers, dashes, or underscores."}), 400
+    if not pin.isdigit() or len(pin) < 4:
+        return jsonify({"error": "PIN must be at least 4 digits."}), 400
+    try:
+        _create_manager_account(full_name, username, pin)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    app.logger.info("Manager account created for %s", username)
     return jsonify({"ok": True})
 
 
