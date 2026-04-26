@@ -621,9 +621,12 @@
         let mobileAccessUrl = "";
         let currentManagerUsername = "";
         let currentManagerFullName = "";
+        let hasTechAssignmentSnapshot = false;
+        let techAssignmentSnapshot = {};
         const soundFx = {
             startup: "/assets/sounds/startup_fx.mp3",
             click: "/assets/sounds/click_fx.mp3",
+            customer: "/assets/sounds/startup_fx.mp3",
         };
         const soundPlayers = {};
 
@@ -650,17 +653,82 @@
             };
         }
 
-        function playSoundEffect(kind) {
+        function playSoundEffect(kind, volumeOverride) {
             const src = soundFx[kind];
-            if (!src) return;
+            if (!src) return Promise.resolve(false);
             const player = soundPlayers[kind] || new Audio(src);
             if (!soundPlayers[kind]) {
                 player.preload = "auto";
                 soundPlayers[kind] = player;
             }
-            player.volume = 0.6;
+            player.volume = typeof volumeOverride === "number" ? volumeOverride : 0.6;
             player.currentTime = 0;
-            player.play().catch(() => {});
+            const playResult = player.play();
+            if (playResult && typeof playResult.then === "function") {
+                return playResult.then(() => true).catch(() => false);
+            }
+            return Promise.resolve(true);
+        }
+
+        function playCustomerAssignedChime() {
+            // Prefer bundled chime and replay softly for audibility in salon noise.
+            playSoundEffect("customer", 0.82).then((played) => {
+                if (played) return;
+                synthesizeCustomerChime();
+            });
+            setTimeout(() => {
+                playSoundEffect("customer", 0.62);
+            }, 230);
+        }
+
+        function synthesizeCustomerChime() {
+            try {
+                const Context = window.AudioContext || window.webkitAudioContext;
+                if (!Context) return;
+                const audioCtx = new Context();
+                const now = audioCtx.currentTime;
+                const notes = [392.0, 523.25, 659.25];
+                notes.forEach((frequency, index) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = index === notes.length - 1 ? "triangle" : "sine";
+                    osc.frequency.setValueAtTime(frequency, now + index * 0.15);
+                    gain.gain.setValueAtTime(0.0001, now + index * 0.15);
+                    gain.gain.exponentialRampToValueAtTime(0.065, now + index * 0.15 + 0.03);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.15 + 0.34);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + index * 0.15);
+                    osc.stop(now + index * 0.15 + 0.36);
+                });
+                setTimeout(() => {
+                    audioCtx.close().catch(() => {});
+                }, 760);
+            } catch (error) {
+                // Ignore sound failures; visuals still indicate assignment.
+            }
+        }
+
+        function detectNewCustomerAssignments() {
+            const nextSnapshot = {};
+            let shouldChime = false;
+            Object.entries(techs).forEach(([name, t]) => {
+                const currentCustomer = (t && t.status === "Busy" && t.current) ? String(t.current) : "";
+                nextSnapshot[name] = currentCustomer;
+                if (!hasTechAssignmentSnapshot) return;
+                const previousCustomer = String(techAssignmentSnapshot[name] || "");
+                if (currentCustomer && currentCustomer !== previousCustomer) {
+                    shouldChime = true;
+                }
+            });
+            techAssignmentSnapshot = nextSnapshot;
+            if (!hasTechAssignmentSnapshot) {
+                hasTechAssignmentSnapshot = true;
+                return;
+            }
+            if (shouldChime) {
+                playCustomerAssignedChime();
+            }
         }
 
         function setupSoundEffects() {
@@ -964,6 +1032,7 @@
         }
 
         function renderTechBoard() {
+            detectNewCustomerAssignments();
             const board = document.getElementById("techBoard");
             const metrics = getQueueAnalytics();
             const bonusPreview = getBonusOrderPreview();
