@@ -1,9 +1,10 @@
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 
-def _resolve_icon(root: Path) -> Path | None:
+def _resolve_icon(root: Path) -> Optional[Path]:
     icons_dir = root / "assets" / "icons"
     if sys.platform.startswith("win"):
         ico_icon = icons_dir / "app.ico"
