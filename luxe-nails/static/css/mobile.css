@@ -1,0 +1,55 @@
+body { margin: 0; font-family: Arial, sans-serif; background: #12100d; color: #f4efe5; }
+        .wrap { max-width: 640px; margin: 0 auto; padding: 16px; }
+        .card { background: #1f1914; border: 1px solid #3d2a1f; border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+        .title { color: #d4af77; font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+        .subtitle { color: #a58f6b; font-size: 13px; margin-bottom: 10px; }
+        .input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #3d2a1f; background: #2a221b; color: #f4efe5; margin-bottom: 10px; box-sizing: border-box; }
+        .btn { width: 100%; border: none; border-radius: 999px; padding: 12px; font-weight: 700; cursor: pointer; margin-bottom: 8px; transition: transform 0.16s ease, filter 0.16s ease, box-shadow 0.2s ease; }
+        .btn:hover { filter: brightness(1.06); box-shadow: 0 6px 14px rgba(0, 0, 0, 0.24); }
+        .btn:active { transform: translateY(1px) scale(0.99); }
+        .btn-primary { background: #d4af77; color: #1a1208; }
+        .btn-muted { background: #3d2a1f; color: #f4efe5; }
+        .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .status-pill { display: inline-block; padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 13px; }
+        .Available { background: #d4af77; color: #1a1208; }
+        .Busy { background: linear-gradient(135deg, #0f5b4a 0%, #178268 48%, #34b892 100%); color: #edfff8; box-shadow: 0 0 0 1px rgba(138, 236, 203, 0.3) inset; }
+        .Offline { background: #4a3f35; color: #d4af77; }
+        .On\ Break { background: #7a5a3a; color: #fff; }
+        .tech-has-customer {
+            border-color: #2fb48d;
+            box-shadow: 0 0 0 1px rgba(47, 180, 141, 0.35), 0 14px 32px rgba(10, 64, 50, 0.32);
+            animation: jadeBreathe 2.4s ease-in-out infinite;
+        }
+        @keyframes jadeBreathe {
+            0%, 100% { box-shadow: 0 0 0 1px rgba(47, 180, 141, 0.3), 0 10px 24px rgba(10, 64, 50, 0.24); }
+            50% { box-shadow: 0 0 0 1px rgba(94, 214, 174, 0.46), 0 18px 36px rgba(10, 64, 50, 0.38); }
+        }
+        .btn-offline-active {
+            background:
+                linear-gradient(180deg, #2a1417, #1a0d10) padding-box,
+                linear-gradient(140deg, #ffd2d2 0%, #ff8d8d 28%, #e23447 55%, #b3132f 78%, #6f0e20 100%) border-box;
+            border: 1.5px solid transparent;
+            color: #ffe8ea;
+            box-shadow: 0 0 0 2px rgba(255, 109, 109, 0.2), 0 0 20px rgba(227, 52, 71, 0.3);
+            animation: offlineRingPulse 2.1s ease-in-out infinite;
+        }
+        @keyframes offlineRingPulse {
+            0%, 100% { box-shadow: 0 0 0 2px rgba(255, 109, 109, 0.16), 0 0 14px rgba(191, 22, 49, 0.24); }
+            50% { box-shadow: 0 0 0 2px rgba(255, 152, 152, 0.34), 0 0 26px rgba(255, 79, 103, 0.42); }
+        }
+        .tech-customer-name { color: #9be3ca; font-weight: 600; }
+        .queue-item { border-bottom: 1px solid #3d2a1f; padding: 8px 0; font-size: 14px; }
+        .service-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #3d2a1f; }
+        .service-row:last-child { border-bottom: none; }
+        .tiny { color: #a58f6b; font-size: 12px; }
+        .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+        .metric { background: #2a221b; border: 1px solid #3d2a1f; border-radius: 10px; padding: 10px; text-align: center; }
+        .metric-label { color: #a58f6b; font-size: 12px; }
+        .metric-value { color: #d4af77; font-size: 22px; font-weight: 700; }
+        .bonus-tag { color: #d4af77; font-weight: 700; margin-left: 6px; }
+        .hidden { display: none; }
+        .confirm-modal { position: fixed; inset: 0; background: rgba(10, 8, 6, 0.78); display: none; align-items: center; justify-content: center; z-index: 9999; padding: 14px; }
+        .confirm-modal-content { width: min(560px, 96vw); background: #1f1914; border: 1px solid #4a3426; border-radius: 14px; padding: 14px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
+        .confirm-modal-title { color: #d4af77; font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+        .confirm-modal-list { max-height: 180px; overflow-y: auto; margin: 8px 0; padding-left: 18px; color: #f4efe5; font-size: 13px; }
+        .confirm-modal-recap { background: #2a221b; border: 1px solid #3d2a1f; border-radius: 10px; padding: 10px; margin-top: 10px; }

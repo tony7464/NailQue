@@ -6,7 +6,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
@@ -17,10 +17,12 @@ def _http_get(url: str, timeout: float = 4.0):
         return response.status, body
 
 
-def _http_post_json(url: str, payload: dict, timeout: float = 4.0):
+def _http_post_json(url: str, payload: dict, timeout: float = 4.0, headers: dict | None = None):
     data = json.dumps(payload).encode("utf-8")
     req = Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/json")
+    for key, value in (headers or {}).items():
+        req.add_header(key, value)
     with urlopen(req, timeout=timeout) as response:
         body = response.read().decode("utf-8", errors="ignore")
         return response.status, body
@@ -52,9 +54,12 @@ def run_qa() -> int:
         "app.py",
         "luxe-nails-queue.html",
         "luxe-nails-employee.html",
+        "luxe-nails-mobile.html",
+        "static/js/http.js",
+        "static/js/queue.js",
+        "static/css/queue.css",
+        "nailque/factory.py",
         "requirements.txt",
-        "BUILD_EXECUTABLES.md",
-        "PRODUCTION_READINESS.md",
         ".env.example",
         "build_executable.py",
         "package-release.py",
@@ -68,9 +73,10 @@ def run_qa() -> int:
             "Found" if exists else "Missing required file",
         )
 
-    # Launch app for runtime checks
     env = os.environ.copy()
     env.setdefault("PORT", str(port))
+    env["AUTO_OPEN_BROWSER"] = "false"
+    env["AUTO_UPDATE_ENABLED"] = "false"
     proc = subprocess.Popen(
         [sys.executable, "app.py"],
         cwd=str(root),
@@ -84,7 +90,6 @@ def run_qa() -> int:
         started = _wait_for_port(host, port, timeout_s=15.0)
         _record(results, "Server starts", started, f"Port {port} opened" if started else "Server did not start in time")
         if started:
-            # Route checks
             for route in ["/", "/employee", "/api/health"]:
                 try:
                     status, body = _http_get(base + route)
@@ -96,7 +101,7 @@ def run_qa() -> int:
                             _record(
                                 results,
                                 "Health payload shape",
-                                bool(payload.get("ok") and payload.get("service") == "nailque"),
+                                bool(payload.get("ok") and payload.get("service") == "nailque" and "runtime_dir" not in payload),
                                 "health JSON validated",
                             )
                         except json.JSONDecodeError:
@@ -104,20 +109,58 @@ def run_qa() -> int:
                 except URLError as err:
                     _record(results, f"GET {route}", False, f"request failed: {err}")
 
-            # Manager API checks
             try:
-                status, body = _http_post_json(base + "/api/manager/verify-pin", {"pin": "1234"})
-                ok = status == 200 and '"ok":' in body
+                status, body = _http_post_json(base + "/api/manager/verify-pin", {"username": "admin", "pin": "1234"})
+                payload = json.loads(body)
+                ok = status == 200 and payload.get("ok") is True and bool(payload.get("token"))
                 _record(results, "POST /api/manager/verify-pin", ok, f"status={status}")
-            except URLError as err:
+                token = payload.get("token") if ok else ""
+            except (URLError, json.JSONDecodeError) as err:
+                token = ""
                 _record(results, "POST /api/manager/verify-pin", False, f"request failed: {err}")
 
-            # Check a known static file route
+            try:
+                status, body = _http_get(base + "/api/shared/state")
+                payload = json.loads(body)
+                dumped = json.dumps(payload)
+                ok = status == 200 and payload.get("ok") is True and "password" not in dumped
+                _record(results, "Shared state hides passwords", ok, f"status={status}")
+            except (URLError, json.JSONDecodeError) as err:
+                _record(results, "Shared state hides passwords", False, f"request failed: {err}")
+
+            try:
+                status, _body = _http_post_json(base + "/api/manager/create-account", {"fullName": "Pat Lee", "username": "qa", "pin": "2222"})
+                _record(results, "Unauthenticated manager create is blocked", status == 401, f"status={status}")
+            except HTTPError as err:
+                _record(results, "Unauthenticated manager create is blocked", err.code == 401, f"status={err.code}")
+            except URLError as err:
+                _record(results, "Unauthenticated manager create is blocked", False, f"request failed: {err}")
+
+            if token:
+                try:
+                    req = Request(base + "/api/manager/accounts", method="GET")
+                    req.add_header("Authorization", f"Bearer {token}")
+                    with urlopen(req, timeout=4) as response:
+                        status = response.status
+                        body = response.read().decode("utf-8", errors="ignore")
+                    payload = json.loads(body)
+                    _record(results, "Authenticated manager accounts", status == 200 and payload.get("ok") is True, f"status={status}")
+                except (URLError, json.JSONDecodeError) as err:
+                    _record(results, "Authenticated manager accounts", False, f"request failed: {err}")
+
             try:
                 status, _body = _http_get(base + "/luxe-nails-queue.html")
                 _record(results, "GET /luxe-nails-queue.html", status == 200, f"status={status}")
             except URLError as err:
                 _record(results, "GET /luxe-nails-queue.html", False, f"request failed: {err}")
+
+            try:
+                status, body = _http_get(base + "/app.py")
+                _record(results, "Source file is not served", status == 404 and "from flask import" not in body, f"status={status}")
+            except HTTPError as err:
+                _record(results, "Source file is not served", err.code == 404, f"status={err.code}")
+            except URLError as err:
+                _record(results, "Source file is not served", False, f"request failed: {err}")
 
     finally:
         try:

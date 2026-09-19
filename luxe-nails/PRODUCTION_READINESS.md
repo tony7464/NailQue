@@ -1,27 +1,11 @@
-# NailQue Production Readiness (macOS)
+# NailQue Production Readiness
 
-## Pre-Launch Checklist
+See the [root README](../README.md) for setup, security, and screenshots.
 
-- Build installer: `./build-mac.sh`
-- Verify app routes:
-  - `http://localhost:5001/`
-  - `http://localhost:5001/employee`
-  - `http://localhost:5001/api/health`
-- Confirm runtime files in `~/Library/Application Support/NailQue`:
-  - `manager_settings.json`
-  - `logs/nailque.log`
-- Confirm manager PIN behavior and tech management flows
-- Confirm queue assignment, finish-service totals, and employee login
+Before a salon launch:
 
-## Packaging Output
-
-- Installer: `dist-installers/NailQue-macOS.pkg`
-- App install path: `/Applications/NailQue.app`
-
-## Clean Reinstall
-
-```bash
-rm -rf "/Applications/NailQue.app"
-sudo installer -pkg "dist-installers/NailQue-macOS.pkg" -target /
-open "/Applications/NailQue.app"
-```
+1. Build the installer (`./build-mac.sh` or `.\build-windows.ps1`)
+2. Confirm `/`, `/employee`, and `/api/health`
+3. Change the default `admin` PIN
+4. Create tech logins in Tech Management
+5. Confirm queue assignment, finish-service totals, and employee/mobile login on the salon Wi-Fi

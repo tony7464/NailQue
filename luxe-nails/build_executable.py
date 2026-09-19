@@ -42,7 +42,6 @@ def build() -> int:
         "VERSION.windows",
         "VERSION.macos",
         ".env.example",
-        "BUILD_EXECUTABLES.md",
     ]
     for rel in files_to_bundle:
         if (root / rel).exists():
@@ -51,6 +50,7 @@ def build() -> int:
         f"assets/icons{sep}assets/icons",
         f"assets/sounds{sep}assets/sounds",
         f"assets/cursors{sep}assets/cursors",
+        f"static{sep}static",
     ])
 
     cmd = [
@@ -69,6 +69,26 @@ def build() -> int:
         "dotenv",
         "--collect-all",
         "webview",
+        "--hidden-import",
+        "nailque",
+        "--hidden-import",
+        "nailque.app",
+        "--hidden-import",
+        "nailque.factory",
+        "--hidden-import",
+        "nailque.routes.pages",
+        "--hidden-import",
+        "nailque.routes.health",
+        "--hidden-import",
+        "nailque.routes.manager",
+        "--hidden-import",
+        "nailque.routes.queue_api",
+        "--hidden-import",
+        "nailque.routes.mobile",
+        "--hidden-import",
+        "nailque.routes.employee",
+        "--hidden-import",
+        "nailque.routes.updates",
     ]
 
     icon_file = _resolve_icon(root)

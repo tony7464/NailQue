@@ -1,5 +1,7 @@
 # Installer Guide
 
+Full product overview, security notes, and screenshots live in the [root README](../README.md).
+
 ## Platform support
 
 - macOS: PKG installer pipeline
@@ -15,49 +17,38 @@ chmod +x build-mac.sh
 ```
 
 Installer output:
-- `dist-installers/NailQue-macOS-<version>.pkg` (unique build artifact)
+
+- `dist-installers/NailQue-macOS-<version>.pkg`
 - `dist-installers/NailQue-macOS.pkg` (latest alias)
 
-Installer versioning:
-- Installer/app version is read from `VERSION`
-- Optional override: `PKG_VERSION=1.0.5 ./build-mac.sh`
+Version comes from `VERSION`. Override with `PKG_VERSION=3.1.0 ./build-mac.sh`.
 
-Auto reinstall after build:
+Auto-reinstall after build:
 
 ```bash
 AUTO_INSTALL=true ./build-mac.sh
 ```
 
-Or run one command helper:
-
-```bash
-chmod +x update-mac.command
-./update-mac.command
-```
+Or run `./update-mac.command`.
 
 ## Install on a Mac
 
 1. Double-click `NailQue-macOS.pkg`
 2. Complete the installer prompts
-3. Launch `NailQue` from Applications
+3. Launch NailQue from Applications (`/Applications/NailQue.app`)
 
-Installed app path:
-- `/Applications/NailQue.app`
+Runtime files: `~/Library/Application Support/NailQue`
 
-## Fast local testing (no pkg reinstall)
-
-From `luxe-nails`:
+## Source run (no installer)
 
 ```bash
 chmod +x start-mac.command
 ./start-mac.command
 ```
 
-This runs from source with auto-reload enabled, so file saves are picked up automatically during testing.
+## OTA updater
 
-## OTA updater (GitHub Releases)
-
-Set these values in the runtime `.env` (inside app support folder or source folder):
+Set these in the runtime `.env`:
 
 ```bash
 AUTO_UPDATE_ENABLED=true
@@ -66,45 +57,19 @@ AUTO_UPDATE_CHECK_INTERVAL_SECONDS=900
 AUTO_UPDATE_INCLUDE_PRERELEASE=false
 ```
 
-Release flow for over-the-air updates:
+Release flow:
+
 1. Bump `VERSION`
-2. Build pkg (`./build-mac.sh`)
-3. Publish the generated `.pkg` as a GitHub Release asset with a matching tag (example: `v1.0.5`)
-4. Installed clients will detect, download, and offer install from Tech Management
+2. Build the pkg
+3. Publish it on a GitHub Release with a matching tag (`v3.1.0`)
+4. A signed-in manager can check and install from Tech Management
 
-## Clean reinstall (if needed)
+## Windows installer
 
-If you had prior broken installs:
-
-```bash
-rm -rf "/Applications/NailQue.app"
-sudo installer -pkg "dist-installers/NailQue-macOS.pkg" -target /
-open "/Applications/NailQue.app"
-```
-
-## Build Windows installer
-
-From `luxe-nails` on a Windows build machine:
+On a Windows build machine:
 
 ```powershell
 .\build-windows.ps1
 ```
 
-Or double-click:
-
-```text
-build-windows.bat
-```
-
-Generated artifacts:
-- `dist-installers/NailQue-Windows-Standalone-<version>.zip`
-- `dist-installers/NailQue-Setup-<version>.exe`
-- `dist-installers/NailQue-Setup.exe` (latest alias)
-
-Requirements:
-- Python 3.10+
-- Inno Setup 6 installed, or `INNO_SETUP_ISCC` set to `ISCC.exe`
-
-Versioning:
-- macOS uses `VERSION`
-- Windows uses `VERSION.windows` (falls back to `VERSION` if missing)
+Requirements: Python 3.10+ and Inno Setup 6. Details are in [installers/windows/README.md](installers/windows/README.md).

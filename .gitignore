@@ -1,1 +1,13 @@
 .DS_Store
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+luxe-nails/manager_settings.json
+luxe-nails/shared_state.json
+luxe-nails/service_history.json
+luxe-nails/manager_activity_log.json
+luxe-nails/secret_key
+luxe-nails/logs/
+luxe-nails/qa-reports/
