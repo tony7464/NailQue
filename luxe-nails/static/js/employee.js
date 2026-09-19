@@ -1,24 +1,5 @@
 // ============== FULL M. VINCÉ SERVICE MENU ==============
-        const servicesMenu = [
-            {name: "Spa Manicure", price: 40},
-            {name: "Signature Manicure", price: 50},
-            {name: "Ultimate M.V. Spa Manicure", price: 65},
-            {name: "Spa Pedicure", price: 60},
-            {name: "Signature Pedicure", price: 70},
-            {name: "Full Set Acrylic", price: 55},
-            {name: "Fill", price: 40},
-            {name: "Gel Polish", price: 25},
-            {name: "Polish Change", price: 15},
-            {name: "Nail Art (per nail)", price: 5},
-            // Shape surcharges
-            {name: "Coffin / Stiletto Shape (+$5)", price: 5},
-            {name: "Almond / Ballerina Shape (+$5)", price: 5},
-            // Add-ons
-            {name: "Paraffin Treatment", price: 15},
-            {name: "Sugar Scrub", price: 10},
-            {name: "Collagen Gloves", price: 20},
-            {name: "Hot Stone Massage", price: 15}
-        ];
+        let servicesMenu = [];
 
         let currentTech = null;
         let employeeAuthToken = localStorage.getItem("employeeAuthToken") || "";
@@ -190,6 +171,24 @@
             }, 0);
         }
 
+        async function loadSalonBranding() {
+            try {
+                const { ok, data } = await apiRequest("/api/salon/settings");
+                if (!ok || !data.ok || !data.settings) return;
+                const name = data.settings.salonName || "NailQue";
+                document.querySelectorAll("[data-salon-name]").forEach((el) => {
+                    el.textContent = name;
+                });
+                document.title = name + " • Employee Portal";
+                if (Array.isArray(data.settings.services)) servicesMenu = data.settings.services;
+                const rate = Number(data.settings.commissionRate || 0.6);
+                const label = document.getElementById("weekEarningsLabel");
+                if (label) label.textContent = `(${Math.round(rate * 100)}% of services)`;
+            } catch (error) {
+                // Branding is cosmetic; login still works.
+            }
+        }
+
         async function init() {
             const savedLoginId = localStorage.getItem("employeeLastLoginId");
             if (savedLoginId) {
@@ -204,6 +203,7 @@
             document.getElementById("loginPassword").addEventListener("keydown", (event) => {
                 if (event.key === "Enter") performEmployeeLogin();
             });
+            await loadSalonBranding();
             setupSoundEffects();
             setTimeout(() => playSoundEffect("startup"), 220);
         }

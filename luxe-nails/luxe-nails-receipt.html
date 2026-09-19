@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NailQue • Receipt</title>
+    <link rel="stylesheet" href="/static/css/queue.css">
+    <style>
+        body { overflow: auto; padding: 32px 16px; }
+        .receipt-card { max-width: 420px; margin: 0 auto; background: #fff; color: #1a1208; border-radius: 12px; padding: 28px; }
+        .receipt-card h1 { font-family: "Playfair Display", serif; font-size: 28px; }
+        .receipt-meta { color: #6b5a45; font-size: 13px; margin: 8px 0 16px; }
+        .receipt-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eadfcf; }
+        .receipt-total { font-weight: 700; font-size: 20px; margin-top: 12px; }
+        .receipt-actions { margin-top: 20px; display: flex; gap: 8px; }
+        @media print { .receipt-actions, .header, .footer { display: none !important; } body { background: #fff; } }
+    </style>
+</head>
+<body>
+    <div class="receipt-card" id="receiptCard">Loading receipt…</div>
+    <script src="/static/js/http.js"></script>
+    <script>
+        (async function loadReceipt() {
+            const parts = window.location.pathname.split("/");
+            const receiptId = parts[parts.length - 1];
+            const card = document.getElementById("receiptCard");
+            try {
+                const { ok, data } = await apiRequest("/api/receipts/" + encodeURIComponent(receiptId));
+                if (!ok || !data.ok || !data.receipt) throw new Error(data.error || "Receipt not found.");
+                const r = data.receipt;
+                const services = (r.selectedServices || []).map((name) => `<div class="receipt-row"><span>${name}</span><span></span></div>`).join("");
+                card.innerHTML = `
+                    <h1>${r.salonName || "NailQue"}</h1>
+                    <div class="receipt-meta">${r.completedAt || ""}<br>Tech: ${r.tech || ""} • Guest: ${r.customer || ""}<br>Receipt ${r.receiptId}</div>
+                    ${services || "<div class='receipt-row'><span>No catalog items</span></div>"}
+                    <div class="receipt-row receipt-total"><span>Total</span><span>$${Number(r.total || 0).toFixed(2)}</span></div>
+                    <div class="receipt-row"><span>Tech share (${Math.round(Number(r.commissionRate || 0.6) * 100)}%)</span><span>$${Number(r.employeeShare || 0).toFixed(2)}</span></div>
+                    <div class="receipt-actions">
+                        <button type="button" class="nav-pill-btn" onclick="window.print()">PRINT</button>
+                        <button type="button" class="nav-pill-btn" onclick="window.location.href='/'">BACK TO QUEUE</button>
+                    </div>
+                `;
+            } catch (error) {
+                card.textContent = error.message || "Receipt not found.";
+            }
+        })();
+    </script>
+</body>
+</html>

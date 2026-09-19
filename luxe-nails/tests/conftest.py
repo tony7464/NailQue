@@ -16,6 +16,21 @@ def app(tmp_path, monkeypatch):
     paths = AppPaths(assets_dir=assets_dir, runtime_dir=tmp_path)
     application = create_app(paths)
     application.config["TESTING"] = True
+    ctx = application.extensions["nailque"]
+    ctx.managers.complete_setup("Admin User", "admin", "1234")
+    ctx.salon.mark_setup_complete("Test Salon", "NAIL SPA")
+    return application
+
+
+@pytest.fixture()
+def fresh_app(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTO_UPDATE_ENABLED", "false")
+    monkeypatch.setenv("TRUST_PROXY", "false")
+    monkeypatch.setenv("AUTO_OPEN_BROWSER", "false")
+    assets_dir = Path(__file__).resolve().parents[1]
+    paths = AppPaths(assets_dir=assets_dir, runtime_dir=tmp_path)
+    application = create_app(paths)
+    application.config["TESTING"] = True
     return application
 
 

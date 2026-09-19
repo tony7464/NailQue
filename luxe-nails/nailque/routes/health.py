@@ -18,6 +18,8 @@ def health():
         "ok": True,
         "service": "nailque",
         "version": ctx.settings.app_version,
+        "setupComplete": ctx.managers.is_setup_complete(),
+        "https": ctx.settings.https_enabled,
     })
 
 
@@ -26,7 +28,7 @@ def health():
 def network_info():
     ctx = get_ctx()
     lan_ip = detect_lan_ip()
-    mobile_url = f"http://{lan_ip}:{ctx.settings.port}/mobile"
+    mobile_url = f"{ctx.settings.http_scheme}://{lan_ip}:{ctx.settings.port}/mobile"
     return jsonify({
         "ok": True,
         "lan_ip": lan_ip,

@@ -8,10 +8,11 @@ from nailque.security import hash_secret, is_hashed_secret, verify_secret
 from nailque.storage import read_json, write_json_atomic
 
 
-def public_manager(manager: dict[str, Any]) -> dict[str, str]:
+def public_manager(manager: dict[str, Any]) -> dict[str, Any]:
     return {
         "username": str(manager.get("username") or ""),
         "fullName": str(manager.get("fullName") or ""),
+        "mustChangePin": bool(manager.get("mustChangePin")),
     }
 
 
@@ -26,10 +27,31 @@ class ManagerStore:
         data = read_json(self.settings_file, {})
         return data if isinstance(data, dict) else {}
 
-    def _write(self, managers: list[dict[str, str]]) -> None:
-        write_json_atomic(self.settings_file, {"managers": managers})
+    def _write(self, managers: list[dict[str, Any]], setup_complete: bool) -> None:
+        write_json_atomic(
+            self.settings_file,
+            {"managers": managers, "setupComplete": setup_complete},
+        )
 
-    def _normalize(self, settings: dict[str, Any]) -> list[dict[str, str]]:
+    def _normalize_manager(self, item: dict[str, Any]) -> tuple[dict[str, Any] | None, bool]:
+        username = str(item.get("username") or "").strip().lower()
+        full_name = str(item.get("fullName") or "").strip()
+        pin = str(item.get("pin") or "").strip()
+        if not username or not full_name or not pin:
+            return None, False
+        dirty = False
+        if not is_hashed_secret(pin):
+            pin = hash_secret(pin)
+            dirty = True
+        return {
+            "username": username,
+            "fullName": full_name,
+            "pin": pin,
+            "mustChangePin": bool(item.get("mustChangePin")),
+        }, dirty
+
+    def _load(self) -> tuple[list[dict[str, Any]], bool]:
+        settings = self._read()
         managers = settings.get("managers")
         normalized = []
         dirty = False
@@ -37,40 +59,39 @@ class ManagerStore:
             for item in managers:
                 if not isinstance(item, dict):
                     continue
-                username = str(item.get("username") or "").strip().lower()
-                full_name = str(item.get("fullName") or "").strip()
-                pin = str(item.get("pin") or "").strip()
-                if not username or not full_name or not pin:
+                manager, item_dirty = self._normalize_manager(item)
+                if manager is None:
                     continue
-                if not is_hashed_secret(pin):
-                    pin = hash_secret(pin)
-                    dirty = True
-                normalized.append({"username": username, "fullName": full_name, "pin": pin})
-        if normalized:
-            if dirty:
-                self._write(normalized)
-            return normalized
-        legacy_pin = str(settings.get("pin") or "").strip() or self.default_pin
-        seeded = [{
-            "username": self.default_username,
-            "fullName": self.default_name,
-            "pin": hash_secret(legacy_pin),
-        }]
-        self._write(seeded)
-        return seeded
+                dirty = dirty or item_dirty
+                normalized.append(manager)
+        setup_complete = bool(settings.get("setupComplete"))
+        if normalized and not setup_complete:
+            # Existing salon files from before the setup wizard.
+            setup_complete = True
+            for manager in normalized:
+                manager["mustChangePin"] = True
+            dirty = True
+        if dirty:
+            self._write(normalized, setup_complete)
+        return normalized, setup_complete
 
-    def list_accounts(self) -> list[dict[str, str]]:
-        return self._normalize(self._read())
+    def is_setup_complete(self) -> bool:
+        managers, setup_complete = self._load()
+        return bool(setup_complete and managers)
 
-    def public_accounts(self) -> list[dict[str, str]]:
+    def list_accounts(self) -> list[dict[str, Any]]:
+        managers, _setup_complete = self._load()
+        return managers
+
+    def public_accounts(self) -> list[dict[str, Any]]:
         return [public_manager(manager) for manager in self.list_accounts()]
 
-    def authenticate(self, username: str, pin: str) -> dict[str, str] | None:
+    def authenticate(self, username: str, pin: str) -> dict[str, Any] | None:
         wanted = str(username or "").strip().lower()
         provided = str(pin or "").strip()
         if not wanted or not provided:
             return None
-        managers = self.list_accounts()
+        managers, setup_complete = self._load()
         matched = None
         dirty = False
         for manager in managers:
@@ -85,26 +106,29 @@ class ManagerStore:
             matched = manager
             break
         if dirty:
-            self._write(managers)
+            self._write(managers, setup_complete)
         return dict(matched) if matched else None
 
     def set_pin(self, username: str, current_pin: str, new_pin: str) -> None:
         manager = self.authenticate(username, current_pin)
         if not manager:
             raise ValueError("Current PIN is incorrect.")
-        managers = self.list_accounts()
+        if str(new_pin).strip() == str(current_pin).strip():
+            raise ValueError("New PIN must be different from the current PIN.")
+        managers, setup_complete = self._load()
         updated = False
         for item in managers:
             if item["username"] == manager["username"]:
                 item["pin"] = hash_secret(new_pin)
+                item["mustChangePin"] = False
                 updated = True
                 break
         if not updated:
             raise ValueError("Manager account not found.")
-        self._write(managers)
+        self._write(managers, setup_complete)
 
-    def create_account(self, full_name: str, username: str, pin: str) -> None:
-        managers = self.list_accounts()
+    def create_account(self, full_name: str, username: str, pin: str, must_change_pin: bool = False) -> None:
+        managers, setup_complete = self._load()
         normalized_username = str(username or "").strip().lower()
         if any(item["username"] == normalized_username for item in managers):
             raise ValueError("Username already exists.")
@@ -112,5 +136,28 @@ class ManagerStore:
             "username": normalized_username,
             "fullName": str(full_name or "").strip(),
             "pin": hash_secret(str(pin or "").strip()),
+            "mustChangePin": bool(must_change_pin),
         })
-        self._write(managers)
+        self._write(managers, setup_complete)
+
+    def complete_setup(self, full_name: str, username: str, pin: str) -> dict[str, Any]:
+        managers, setup_complete = self._load()
+        if setup_complete and managers:
+            raise ValueError("Salon setup is already complete.")
+        normalized_username = str(username or "").strip().lower()
+        full_name = str(full_name or "").strip()
+        pin = str(pin or "").strip()
+        if not full_name or " " not in full_name:
+            raise ValueError("Full name must include first and last name.")
+        if not normalized_username or not normalized_username.replace("_", "").replace("-", "").isalnum():
+            raise ValueError("Username must use letters, numbers, dashes, or underscores.")
+        if not pin.isdigit() or not (4 <= len(pin) <= 12):
+            raise ValueError("PIN must be 4 to 12 digits.")
+        seeded = [{
+            "username": normalized_username,
+            "fullName": full_name,
+            "pin": hash_secret(pin),
+            "mustChangePin": pin == "1234",
+        }]
+        self._write(seeded, True)
+        return public_manager(seeded[0])

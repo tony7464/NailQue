@@ -75,4 +75,8 @@ class Settings:
         self.mobile_session_ttl_seconds = 12 * 60 * 60
         self.manager_session_ttl_seconds = 8 * 60 * 60
         self.employee_session_ttl_seconds = 12 * 60 * 60
-        self.max_content_length = 64 * 1024
+        self.max_content_length = 256 * 1024
+        self.ssl_certfile = (os.getenv("SSL_CERTFILE") or "").strip()
+        self.ssl_keyfile = (os.getenv("SSL_KEYFILE") or "").strip()
+        self.https_enabled = bool(self.ssl_certfile and self.ssl_keyfile)
+        self.http_scheme = "https" if self.https_enabled else "http"

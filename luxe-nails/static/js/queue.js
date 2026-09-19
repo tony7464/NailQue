@@ -1,31 +1,23 @@
-const servicesMenu = [
-            {name: "Spa Manicure", price: 40},
-            {name: "Signature Manicure", price: 50},
-            {name: "Ultimate M.V. Spa Manicure", price: 65},
-            {name: "Spa Pedicure", price: 60},
-            {name: "Signature Pedicure", price: 70},
-            {name: "Full Set Acrylic", price: 55},
-            {name: "Fill", price: 40},
-            {name: "Gel Polish", price: 25},
-            {name: "Polish Change", price: 15},
-            {name: "Nail Art (per nail)", price: 5},
-            {name: "Coffin / Stiletto Shape (+$5)", price: 5},
-            {name: "Almond / Ballerina Shape (+$5)", price: 5},
-            {name: "Paraffin Treatment", price: 15},
-            {name: "Sugar Scrub", price: 10},
-            {name: "Collagen Gloves", price: 20},
-            {name: "Hot Stone Massage", price: 15}
-        ];
-
-        let techs = {
-            Anna: { status: "Offline", current: null, startTime: null, earnings: 0 },
-            Bella: { status: "Offline", current: null, startTime: null, earnings: 0 }
+        let servicesMenu = [];
+        let commissionRate = 0.6;
+        let salonSettings = {
+            salonName: "NailQue",
+            tagline: "NAIL SPA",
+            idleLockMinutes: 5,
+            bonusHours: { start: "08:00", end: "09:30" },
+            services: []
         };
+        let techs = {};
         let waitingQueue = [];
+        let appointments = [];
         let currentFinishingTech = null;
         let finishCustomAddons = [];
         let nextCustomerId = 1;
         let bonusOrder = [];
+        let lastReceipt = null;
+        let managerMustChangePin = false;
+        let lastManagerActivityAt = Date.now();
+        let todayServiceCount = 0;
 
         const queueStateKey = "mvQueueState";
         const serviceRecordsKey = "mvServiceRecords";
@@ -298,6 +290,7 @@ const servicesMenu = [
             const availablePriority = [];
             const busy = [];
             const scheduled = [];
+            const onBreak = [];
             const offline = [];
 
             const bonusPending = getBonusOrderPreview();
@@ -319,51 +312,69 @@ const servicesMenu = [
             Object.keys(techs).forEach((name) => {
                 const status = techs[name].status;
                 if (status === "Busy") busy.push(name);
+                else if (status === "On Break") onBreak.push(name);
                 else if (status === "Scheduled Appointment") scheduled.push(name);
                 else if (status === "Offline") offline.push(name);
             });
 
             busy.sort((a, b) => (techs[a].startTime || Number.MAX_SAFE_INTEGER) - (techs[b].startTime || Number.MAX_SAFE_INTEGER));
-            return [...availablePriority, ...busy, ...scheduled, ...offline];
+            return [...availablePriority, ...busy, ...onBreak, ...scheduled, ...offline];
         }
 
         function getQueueAnalytics() {
-            const records = JSON.parse(localStorage.getItem(serviceRecordsKey) || "[]");
-            const today = new Date();
-            const dayKey = today.toDateString();
-            const todays = records.filter((r) => new Date(r.completedAt).toDateString() === dayKey);
             return {
                 waiting: waitingQueue.length,
-                completedToday: todays.length
+                completedToday: todayServiceCount
             };
         }
 
-        function getSharedSyncPayload() {
-            const payload = {
-                techs,
-                waitingQueue,
-                nextCustomerId,
-                bonusClockIns
-            };
-            if (!credentialsConfiguredOnServer) {
-                const legacy = getLegacyCredentialsForMigration();
-                if (legacy && Object.keys(legacy).length) {
-                    payload.credentials = legacy;
-                }
+        function applySalonSettings(settings) {
+            if (!settings || typeof settings !== "object") return;
+            salonSettings = Object.assign({}, salonSettings, settings);
+            if (Array.isArray(settings.services) && settings.services.length) {
+                servicesMenu = settings.services;
             }
-            return payload;
+            if (typeof settings.commissionRate === "number") {
+                commissionRate = settings.commissionRate;
+            }
+            if (settings.bonusHours && settings.bonusHours.start && settings.bonusHours.end) {
+                bonusSettings = settings.bonusHours;
+            }
+            const nameEl = document.getElementById("salonHeaderName");
+            const tagEl = document.getElementById("salonTagline");
+            if (nameEl) nameEl.textContent = salonSettings.salonName || "NailQue";
+            if (tagEl) tagEl.textContent = salonSettings.tagline || "NAIL SPA";
+            const shareLabel = document.getElementById("employeeShareLabel");
+            if (shareLabel) shareLabel.textContent = `Employee Share (${Math.round(commissionRate * 100)}%)`;
+            const nameInput = document.getElementById("salonNameInput");
+            const tagInput = document.getElementById("salonTaglineInput");
+            const commissionInput = document.getElementById("commissionRateInput");
+            const idleInput = document.getElementById("idleLockInput");
+            if (nameInput) nameInput.value = salonSettings.salonName || "";
+            if (tagInput) tagInput.value = salonSettings.tagline || "";
+            if (commissionInput) commissionInput.value = String(Math.round(commissionRate * 100));
+            if (idleInput) idleInput.value = String(salonSettings.idleLockMinutes || 5);
+            renderSalonServicesEditor();
+        }
+
+        async function queueMutate(action, payload) {
+            const { ok, data } = await apiRequest("/api/queue/action", {
+                method: "POST",
+                token: managerAuthToken,
+                body: Object.assign({ action }, payload || {})
+            });
+            if (!ok || !data.ok) {
+                throw new Error((data && data.error) || "Queue update failed.");
+            }
+            if (data.state) applySharedStateFromServer(data.state);
+            if (data.receipt) {
+                lastReceipt = data.receipt;
+            }
+            return data;
         }
 
         async function syncSharedStateToServer() {
-            try {
-                await fetch("/api/shared/sync", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(getSharedSyncPayload())
-                });
-            } catch (error) {
-                // no-op: queue still works locally even if sync fails
-            }
+            return false;
         }
 
         function applySharedStateFromServer(state) {
@@ -371,6 +382,7 @@ const servicesMenu = [
             if (!state.techs || !Array.isArray(state.waitingQueue)) return;
             techs = state.techs;
             waitingQueue = state.waitingQueue;
+            appointments = Array.isArray(state.appointments) ? state.appointments : [];
             if (Number.isInteger(state.nextCustomerId)) nextCustomerId = state.nextCustomerId;
             if (state.bonusClockIns && typeof state.bonusClockIns === "object") bonusClockIns = state.bonusClockIns;
             credentialsConfiguredOnServer = Boolean(state.credentialsConfigured);
@@ -380,9 +392,11 @@ const servicesMenu = [
             if (credentialsConfiguredOnServer) {
                 localStorage.removeItem("nailTechCredentials");
             }
-            localStorage.setItem(queueStateKey, JSON.stringify({ techs, waitingQueue, nextCustomerId }));
+            localStorage.setItem(queueStateKey, JSON.stringify({ techs, waitingQueue, nextCustomerId, appointments }));
             renderTechBoard();
             renderQueue();
+            renderAppointments();
+            renderManagerTechList();
         }
 
         async function fetchSharedStateFromServer() {
@@ -391,6 +405,8 @@ const servicesMenu = [
                 const data = await response.json();
                 if (!response.ok || !data.ok || !data.state) return false;
                 applySharedStateFromServer(data.state);
+                if (data.salon) applySalonSettings(data.salon);
+                if (Number.isInteger(data.completedToday)) todayServiceCount = data.completedToday;
                 return true;
             } catch (error) {
                 return false;
@@ -431,34 +447,8 @@ const servicesMenu = [
         }
 
         function autoAssign() {
-            if (waitingQueue.length === 0) {
-                renderQueue();
-                renderTechBoard();
-                return;
-            }
-            let assignedAtLeastOne = false;
-            let availableTechs = getAvailableTechPriorityList();
-            while (waitingQueue.length > 0 && availableTechs.length > 0) {
-                let assignmentMadeThisPass = false;
-                for (const availableTech of availableTechs) {
-                    const customerIndex = findAssignableCustomerIndex(availableTech);
-                    if (customerIndex === -1) continue;
-                    const customer = waitingQueue.splice(customerIndex, 1)[0];
-                    techs[availableTech].status = "Busy";
-                    techs[availableTech].current = customer.name;
-                    techs[availableTech].startTime = Date.now();
-                    markBonusTurnUsed(availableTech);
-                    assignmentMadeThisPass = true;
-                    assignedAtLeastOne = true;
-                    break;
-                }
-                if (!assignmentMadeThisPass) break;
-                availableTechs = getAvailableTechPriorityList();
-            }
-            saveQueueState();
             renderQueue();
             renderTechBoard();
-            if (!assignedAtLeastOne) return;
         }
 
         function renderQueue() {
@@ -487,7 +477,13 @@ const servicesMenu = [
                 row.dataset.customerId = String(customer.id ?? `${customer.name}-${customer.arrival}-${idx}`);
                 row.innerHTML = `
                     <div><strong>#${idx + 1}</strong> ${customer.name}${appointmentBadge}${detailText ? `<div style="font-size:12px;color:#a58f6b;margin-top:4px;">${detailText}</div>` : ""}</div>
-                    <div style="color:#d4af77;">${waitMins} min</div>
+                    <div style="color:#d4af77;display:flex;align-items:center;gap:8px;">
+                        <span>${waitMins} min</span>
+                        <div class="queue-item-actions">
+                            <button type="button" class="btn-small" onclick="skipWaitingCustomer(${Number(customer.id)})">Skip</button>
+                            <button type="button" class="btn-small" style="background:#6b3030;color:#f5f0e8;" onclick="removeWaitingCustomer(${Number(customer.id)})">Remove</button>
+                        </div>
+                    </div>
                 `;
                 fragment.appendChild(row);
             });
@@ -514,6 +510,28 @@ const servicesMenu = [
                     }, 380);
                 });
             });
+        }
+
+        function renderAppointments() {
+            const list = document.getElementById("appointmentList");
+            if (!list) return;
+            const booked = (appointments || []).filter((item) => item && item.status === "booked");
+            if (!booked.length) {
+                list.innerHTML = `<div style="color:#a58f6b; text-align:center; padding:14px;">No booked appointments</div>`;
+                return;
+            }
+            booked.sort((a, b) => (a.appointmentTime || 0) - (b.appointmentTime || 0));
+            list.innerHTML = booked.map((item) => {
+                const when = formatAppointmentLabel(item.appointmentTime);
+                const tech = item.requestedTech ? ` • ${escapeHtml(item.requestedTech)}` : "";
+                return `<div class="queue-item">
+                    <div><strong>${escapeHtml(item.name || "Guest")}</strong><div style="font-size:12px;color:#a58f6b;margin-top:4px;">${when}${tech}</div></div>
+                    <div class="queue-item-actions">
+                        <button type="button" class="btn-small" style="background:#2d5b4a;color:#f5f0e8;" onclick="arriveAppointment(${Number(item.id)})">Arrived</button>
+                        <button type="button" class="btn-small" style="background:#6b3030;color:#f5f0e8;" onclick="cancelAppointment(${Number(item.id)})">Cancel</button>
+                    </div>
+                </div>`;
+            }).join("");
         }
 
         function statusBadgeForTech(tech) {
@@ -580,6 +598,8 @@ const servicesMenu = [
                         <select class="select-input tech-status-select" data-tech="${encodedName}" style="margin-bottom:0;max-width:200px;">
                             <option value="Offline" ${techs[name].status === "Offline" ? "selected" : ""}>Offline</option>
                             <option value="Available" ${techs[name].status === "Available" ? "selected" : ""}>Available</option>
+                            <option value="Busy" ${techs[name].status === "Busy" ? "selected" : ""}>Busy</option>
+                            <option value="On Break" ${techs[name].status === "On Break" ? "selected" : ""}>On Break</option>
                             <option value="Scheduled Appointment" ${techs[name].status === "Scheduled Appointment" ? "selected" : ""}>Scheduled Appointment</option>
                         </select>
                         <button type="button" class="btn-small tech-reset-btn" data-tech="${encodedName}" style="background:#3d2a1f;color:#d4af77;">Reset password</button>
@@ -605,7 +625,7 @@ const servicesMenu = [
                 : `<option value="">No destination tech available</option>`;
         }
 
-        function performManagerReassign() {
+        async function performManagerReassign() {
             const fromName = document.getElementById("reassignFromTechSelect").value;
             const toName = document.getElementById("reassignToTechSelect").value;
             if (!fromName || !toName) {
@@ -616,40 +636,15 @@ const servicesMenu = [
                 showManagerMessage("Source and destination must be different techs.", true);
                 return;
             }
-            const fromTech = techs[fromName];
-            const toTech = techs[toName];
-            if (!fromTech || !toTech) {
-                showManagerMessage("Selected tech could not be found.", true);
-                return;
+            try {
+                await queueMutate("reassign", { fromTech: fromName, toTech: toName });
+                showManagerMessage(`Moved customer from ${fromName} to ${toName}.`);
+                showActionToast(`Customer moved: ${fromName} -> ${toName}.`, false);
+                addManagerActivity(`Reassigned customer from ${fromName} to ${toName}.`, "success");
+            } catch (error) {
+                showManagerMessage(error.message, true);
+                showActionToast(error.message, true);
             }
-            if (fromTech.status !== "Busy" || !fromTech.current) {
-                showManagerMessage(`${fromName} does not have an active customer to reassign.`, true);
-                return;
-            }
-            if (toTech.status === "Busy") {
-                showManagerMessage(`${toName} is currently busy.`, true);
-                return;
-            }
-            const customerName = fromTech.current;
-            fromTech.status = "Available";
-            fromTech.current = null;
-            fromTech.startTime = null;
-            if (!bonusClockIns[fromName]) {
-                bonusClockIns[fromName] = Date.now();
-            }
-            toTech.status = "Busy";
-            toTech.current = customerName;
-            toTech.startTime = Date.now();
-            bonusCycleQueue = bonusCycleQueue.filter((name) => name !== toName);
-            syncBonusCycleQueue();
-            localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
-            saveQueueState();
-            renderTechBoard();
-            renderQueue();
-            renderManagerTechList();
-            showManagerMessage(`Moved ${customerName} from ${fromName} to ${toName}.`);
-            showActionToast(`Customer moved: ${customerName} -> ${toName}.`, false);
-            addManagerActivity(`Reassigned ${customerName} from ${fromName} to ${toName}.`, "success");
         }
 
         function escapeHtml(value) {
@@ -1217,18 +1212,29 @@ const servicesMenu = [
                 managerAuthToken = data.token;
                 currentManagerUsername = (data.manager && data.manager.username) || username;
                 currentManagerFullName = (data.manager && data.manager.fullName) || username;
+                managerMustChangePin = Boolean(data.mustChangePin || (data.manager && data.manager.mustChangePin));
             } catch (error) {
                 pinMsg.style.color = "#c48b6f";
                 pinMsg.textContent = "Could not verify PIN. Try again.";
                 return;
             }
             closeManagerPinModal();
+            touchManagerActivity();
+            if (managerMustChangePin) {
+                openForcePinModal();
+                return;
+            }
+            await openManagerModal();
+        }
+
+        async function openManagerModal() {
             if (pendingUpdateAfterLogin) {
                 pendingUpdateAfterLogin = false;
                 runOneTapUpdateFlow();
             }
             document.getElementById("bonusStartInput").value = bonusSettings.start;
             document.getElementById("bonusEndInput").value = bonusSettings.end;
+            applySalonSettings(salonSettings);
             renderManagerTechList();
             await fetchManagerActivityLog();
             renderManagerActivityLog();
@@ -1244,6 +1250,7 @@ const servicesMenu = [
             const pw = document.getElementById("newTechPassword");
             if (pw) { pw.type = "password"; }
             document.getElementById("managerModal").style.display = "flex";
+            touchManagerActivity();
         }
 
         function closeManagerModal() {
@@ -1262,7 +1269,7 @@ const servicesMenu = [
             }
         }
 
-        function saveBonusSettings() {
+        async function saveBonusSettings() {
             const start = document.getElementById("bonusStartInput").value;
             const end = document.getElementById("bonusEndInput").value;
             if (!start || !end || hhmmToMinutes(start) >= hhmmToMinutes(end)) {
@@ -1271,37 +1278,33 @@ const servicesMenu = [
                 addManagerActivity("Attempted to save invalid bonus window.", "error");
                 return;
             }
-            bonusSettings = { start, end };
-            localStorage.setItem(bonusSettingsKey, JSON.stringify(bonusSettings));
-            rebuildBonusOrder();
-            showManagerMessage("Bonus hours saved.");
-            showActionToast(`Bonus window updated: ${start} - ${end}.`, false);
-            addManagerActivity(`Updated bonus window to ${start} - ${end}.`, "success");
+            try {
+                const { ok, data } = await apiRequest("/api/salon/settings", {
+                    method: "PUT",
+                    token: managerAuthToken,
+                    body: { bonusHours: { start, end } }
+                });
+                if (!ok || !data.ok) throw new Error(data.error || "Could not save bonus hours.");
+                applySalonSettings(data.settings);
+                rebuildBonusOrder();
+                showManagerMessage("Bonus hours saved.");
+                showActionToast(`Bonus window updated: ${start} - ${end}.`, false);
+                addManagerActivity(`Updated bonus window to ${start} - ${end}.`, "success");
+            } catch (error) {
+                showManagerMessage(error.message, true);
+            }
         }
 
-        function setTechStatusOverride(name, status) {
-            const tech = techs[name];
-            if (!tech) return;
-            if (status === "Available" && !bonusClockIns[name]) {
-                bonusClockIns[name] = Date.now();
-                localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
+        async function setTechStatusOverride(name, status) {
+            try {
+                await queueMutate("status_override", { name, status, returnCustomer: status !== "Busy" });
+                showActionToast(`${name} set to ${status}.`, false);
+                addManagerActivity(`Set ${name} status to ${status}.`, "success");
+            } catch (error) {
+                showActionToast(error.message, true);
+                showManagerMessage(error.message, true);
+                renderManagerTechList();
             }
-            if (status !== "Available") {
-                bonusCycleQueue = bonusCycleQueue.filter((n) => n !== name);
-            } else {
-                syncBonusCycleQueue();
-            }
-            tech.status = status;
-            if (status !== "Busy") {
-                tech.current = null;
-                tech.startTime = null;
-            }
-            saveQueueState();
-            renderTechBoard();
-            renderManagerTechList();
-            showActionToast(`${name} set to ${status}.`, false);
-            addManagerActivity(`Set ${name} status to ${status}.`, "success");
-            if (status === "Available") autoAssign();
         }
 
         async function changeManagerPin() {
@@ -1404,6 +1407,7 @@ const servicesMenu = [
             creds[techName] = { identifier: identifier.trim(), mustChangePassword: true };
             saveCredentialMeta(creds);
             credentialsConfiguredOnServer = true;
+            await fetchSharedStateFromServer();
 
             document.getElementById("newTechName").value = "";
             document.getElementById("newTechIdentifier").value = "";
@@ -1414,7 +1418,6 @@ const servicesMenu = [
             showActionToast(`Account created for ${techName}.`, false);
             addManagerActivity(`Created account for ${techName}.`, "success");
             renderManagerTechList();
-            saveQueueState();
         }
 
         async function resetTechAccountPassword(techName) {
@@ -1479,7 +1482,7 @@ const servicesMenu = [
             document.getElementById("removeTechConfirmModal").style.display = "none";
         }
 
-        function confirmRemoveTechAccount() {
+        async function confirmRemoveTechAccount() {
             const techName = pendingRemoveTechName;
             if (!techName || !techs[techName]) {
                 cancelRemoveTechConfirm();
@@ -1501,39 +1504,21 @@ const servicesMenu = [
                 credentialMeta: { ...(getCredentialMeta()[techName] || {}) },
                 removedAt: Date.now()
             };
-            if (t.status === "Busy" && t.current) {
-                waitingQueue.unshift({ id: nextCustomerId++, name: t.current, arrival: Date.now() });
+            try {
+                await queueMutate("remove_tech", { name: techName });
+            } catch (error) {
+                cancelRemoveTechConfirm();
+                showActionToast(error.message, true);
+                return;
             }
-
-            delete bonusClockIns[techName];
-            localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
-
             const creds = getCredentialMeta();
             delete creds[techName];
             saveCredentialMeta(creds);
-            if (managerAuthToken) {
-                apiRequest("/api/manager/tech-logins/delete", {
-                    method: "POST",
-                    token: managerAuthToken,
-                    body: { tech: techName }
-                }).catch(() => {});
-            }
-
-            const names = JSON.parse(localStorage.getItem("nailTechNames") || "[]");
-            const filtered = names.filter((n) => n !== techName);
-            localStorage.setItem("nailTechNames", JSON.stringify(filtered));
-
-            delete techs[techName];
             pendingRemoveTechName = null;
             document.getElementById("removeTechConfirmModal").style.display = "none";
-            saveQueueState();
             showManagerMessage(`Removed ${techName} from the program.`);
             showActionToast(`${techName} removed from the program. Use Undo if needed.`, false);
             addManagerActivity(`Removed ${techName} from the program.`, "success");
-            renderTechBoard();
-            renderManagerTechList();
-            autoAssign();
-            renderQueue();
         }
 
         async function undoLastTechRemoval() {
@@ -1546,24 +1531,18 @@ const servicesMenu = [
                 showActionToast("Undo not available: tech already exists.", true);
                 return;
             }
-            techs[name] = tech;
-            const names = JSON.parse(localStorage.getItem("nailTechNames") || "[]");
-            if (!names.includes(name)) names.push(name);
-            localStorage.setItem("nailTechNames", JSON.stringify(names));
+            try {
+                await queueMutate("restore_tech", { name, tech });
+            } catch (error) {
+                showActionToast(error.message, true);
+                return;
+            }
             const creds = getCredentialMeta();
             creds[name] = credentialMeta && Object.keys(credentialMeta).length ? credentialMeta : {
                 identifier: (formatTechIdentity(name) || {}).identifier || String(name).toLowerCase().replace(/\s+/g, ""),
                 mustChangePassword: true
             };
             saveCredentialMeta(creds);
-            if (managerAuthToken) {
-                await apiRequest("/api/manager/tech-logins/restore", {
-                    method: "POST",
-                    token: managerAuthToken,
-                    body: { tech: name }
-                });
-            }
-            saveQueueState();
             renderTechBoard();
             renderManagerTechList();
             showActionToast(`Restored ${name}.`, false);
@@ -1676,7 +1655,7 @@ const servicesMenu = [
                 total += Number(addon.price || 0);
             });
             document.getElementById("totalAmount").textContent = `$${total.toFixed(2)}`;
-            document.getElementById("employeeEarnings").textContent = `$${(total * 0.6).toFixed(2)}`;
+            document.getElementById("employeeEarnings").textContent = `$${(total * commissionRate).toFixed(2)}`;
         }
 
         function toggleServiceSelection(event, idx) {
@@ -1688,11 +1667,10 @@ const servicesMenu = [
             calculateTotal();
         }
 
-        function completeServiceWithEarnings() {
+        async function completeServiceWithEarnings() {
             if (!currentFinishingTech) return;
             const tech = techs[currentFinishingTech];
             const completedCustomerName = tech.current || "customer";
-            const total = parseFloat(document.getElementById("totalAmount").textContent.replace("$", "")) || 0;
             const selectedServiceIndexes = Array.from(document.querySelectorAll("#serviceList input:checked"))
                 .map((cb) => parseInt(cb.dataset.index, 10))
                 .filter((idx) => Number.isInteger(idx) && servicesMenu[idx]);
@@ -1701,43 +1679,23 @@ const servicesMenu = [
                 const proceed = confirm("No services selected. Complete service with $0 total?");
                 if (!proceed) return;
             }
-            const selectedServices = selectedServiceIndexes.map((idx) => servicesMenu[idx].name)
-                .concat(customAddons.map((addon) => `${addon.name} (Add-on)`));
-            const employeeShare = total * 0.6;
-
-            tech.earnings = (tech.earnings || 0) + employeeShare;
-            saveServiceRecord({
-                tech: currentFinishingTech,
-                customer: tech.current || "Customer",
-                total,
-                employeeShare,
-                selectedServiceIndexes,
-                selectedServices,
-                customAddons,
-                completedAt: new Date().toISOString()
-            });
-            recordServiceHistoryFromFrontDesk({
-                tech: currentFinishingTech,
-                customer: tech.current || "Customer",
-                selectedServiceIndexes,
-                customAddons,
-                completedAt: new Date().toISOString()
-            });
-            tech.status = "Available";
-            tech.current = null;
-            tech.startTime = null;
-            if (!bonusClockIns[currentFinishingTech]) {
-                bonusClockIns[currentFinishingTech] = Date.now();
+            const finishingTech = currentFinishingTech;
+            try {
+                const data = await queueMutate("finish", {
+                    name: finishingTech,
+                    selectedServiceIndexes,
+                    customAddons,
+                    source: "frontdesk"
+                });
+                document.getElementById("finishModal").style.display = "none";
+                document.getElementById("finishTechName").textContent = "";
+                finishCustomAddons = [];
+                currentFinishingTech = null;
+                showActionToast(`Service completed for ${completedCustomerName}.`, false);
+                if (data.receipt) openReceiptModal(data.receipt);
+            } catch (error) {
+                showActionToast(error.message, true);
             }
-            localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
-            document.getElementById("finishModal").style.display = "none";
-            document.getElementById("finishTechName").textContent = "";
-            finishCustomAddons = [];
-            currentFinishingTech = null;
-            saveQueueState();
-            autoAssign();
-            showActionToast(`Service completed for ${completedCustomerName}.`, false);
-            alert(`Service complete!\nEmployee earned: $${employeeShare.toFixed(2)}`);
         }
 
         function cancelFinishModal() {
@@ -1749,92 +1707,55 @@ const servicesMenu = [
 
         function finishTech(name) { openFinishModal(name); }
 
-        function signInTech(name) {
+        async function signInTech(name) {
             const tech = techs[name];
             if (!tech || tech.status === "Busy" || tech.status === "Scheduled Appointment") return;
-            tech.status = "Available";
-            if (!bonusClockIns[name]) {
-                bonusClockIns[name] = Date.now();
-                localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
+            try {
+                await queueMutate("set_status", { name, status: "Available", returnCustomer: false });
+            } catch (error) {
+                showActionToast(error.message, true);
             }
-            syncBonusCycleQueue();
-            saveQueueState();
-            autoAssign();
-            renderTechBoard();
         }
 
-        function unreadyTech(name) {
+        async function unreadyTech(name) {
             const tech = techs[name];
             if (!tech) return;
             if (tech.status === "Busy") {
                 showActionToast(`${name} is busy and cannot go unready right now.`, true);
                 return;
             }
-            tech.status = "Offline";
-            tech.current = null;
-            tech.startTime = null;
-            bonusCycleQueue = bonusCycleQueue.filter((n) => n !== name);
-            saveQueueState();
-            renderTechBoard();
-            renderManagerTechList();
-            showActionToast(`${name} is now offline.`, false);
-            addManagerActivity(`${name} set themselves to Offline (unready).`, "success");
+            try {
+                await queueMutate("set_status", { name, status: "Offline", returnCustomer: true });
+                showActionToast(`${name} is now offline.`, false);
+                addManagerActivity(`${name} set themselves to Offline (unready).`, "success");
+            } catch (error) {
+                showActionToast(error.message, true);
+            }
         }
 
-        function toggleTechBreak(name) {
+        async function toggleTechBreak(name) {
             const tech = techs[name];
             if (!tech) return;
             if (tech.status === "Busy") {
                 showActionToast(`${name} is serving a customer and cannot start a break.`, true);
                 return;
             }
-            if (tech.status === "On Break") {
-                tech.status = "Available";
-                if (!bonusClockIns[name]) {
-                    bonusClockIns[name] = Date.now();
-                    localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
-                }
-                saveQueueState();
-                showActionToast(`${name} is back from break.`, false);
-                autoAssign();
-                return;
+            const nextStatus = tech.status === "On Break" ? "Available" : "On Break";
+            try {
+                await queueMutate("set_status", { name, status: nextStatus, returnCustomer: true });
+                showActionToast(nextStatus === "Available" ? `${name} is back from break.` : `${name} is now on break.`, false);
+            } catch (error) {
+                showActionToast(error.message, true);
             }
-            tech.status = "On Break";
-            tech.current = null;
-            tech.startTime = null;
-            bonusCycleQueue = bonusCycleQueue.filter((n) => n !== name);
-            saveQueueState();
-            renderTechBoard();
-            showActionToast(`${name} is now on break.`, false);
         }
 
-        function skipNextForTech(name) {
-            const tech = techs[name];
-            if (!tech || tech.status !== "Available") {
-                showActionToast(`${name} must be available to skip a turn.`, true);
-                return;
+        async function skipNextForTech(name) {
+            try {
+                await queueMutate("skip_turn", { name });
+                showActionToast(`${name} skipped this turn.`, false);
+            } catch (error) {
+                showActionToast(error.message, true);
             }
-            if (waitingQueue.length === 0) {
-                showActionToast("No waiting customers to skip.", true);
-                return;
-            }
-            const nextTech = getNextAvailableTechForAssignment();
-            if (nextTech !== name) {
-                showActionToast(`${name} is not next in rotation right now.`, true);
-                return;
-            }
-            const hasAssignableCustomer = findAssignableCustomerIndex(name) !== -1;
-            if (!hasAssignableCustomer) {
-                showActionToast(`${name} has no assignable customer to skip right now.`, true);
-                return;
-            }
-            const latestClockIn = Math.max(...Object.keys(techs).map((techName) => bonusClockIns[techName] || 0), 0);
-            bonusClockIns[name] = latestClockIn + 1;
-            localStorage.setItem(bonusClockInsKey, JSON.stringify(bonusClockIns));
-            syncBonusCycleQueue();
-            saveQueueState();
-            autoAssign();
-            showActionToast(`${name} skipped this turn.`, false);
         }
 
         function openAddCustomerModal() {
@@ -1851,7 +1772,7 @@ const servicesMenu = [
             document.getElementById("addCustomerModal").style.display = "none";
         }
 
-        function submitAddCustomerModal() {
+        async function submitAddCustomerModal() {
             const name = document.getElementById("customerNameInput").value.trim();
             const isAppointment = document.getElementById("isAppointmentInput").checked;
             const appointmentTimeValue = document.getElementById("appointmentTimeInput").value;
@@ -1871,18 +1792,26 @@ const servicesMenu = [
                 appointmentDate.setHours(h, m, 0, 0);
                 appointmentTime = appointmentDate.getTime();
             }
-            waitingQueue.push({
-                id: nextCustomerId++,
-                name,
-                arrival: Date.now(),
-                appointmentTime,
-                requestedTech: requestedTech || ""
-            });
-            saveQueueState();
-            closeAddCustomerModal();
-            autoAssign();
-            renderQueue();
-            showActionToast(`${name} added to queue${appointmentTime ? ` for ${formatAppointmentLabel(appointmentTime)}` : ""}.`, false);
+            try {
+                if (isAppointment) {
+                    await queueMutate("add_appointment", {
+                        name,
+                        appointmentTime,
+                        requestedTech: requestedTech || ""
+                    });
+                    showActionToast(`${name} booked for ${formatAppointmentLabel(appointmentTime)}.`, false);
+                } else {
+                    await queueMutate("add_customer", {
+                        name,
+                        requestedTech: requestedTech || "",
+                        appointmentTime
+                    });
+                    showActionToast(`${name} added to queue.`, false);
+                }
+                closeAddCustomerModal();
+            } catch (error) {
+                alert(error.message);
+            }
         }
 
         function toggleAppointmentFields() {
@@ -1913,8 +1842,7 @@ const servicesMenu = [
         }
 
         function saveQueueState() {
-            localStorage.setItem(queueStateKey, JSON.stringify({ techs, waitingQueue, nextCustomerId }));
-            syncSharedStateToServer();
+            localStorage.setItem(queueStateKey, JSON.stringify({ techs, waitingQueue, nextCustomerId, appointments }));
         }
 
         function loadQueueState() {
@@ -2014,14 +1942,206 @@ const servicesMenu = [
             clock.textContent = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
         }
 
+        async function skipWaitingCustomer(customerId) {
+            try {
+                await queueMutate("skip_customer", { id: customerId });
+            } catch (error) {
+                showActionToast(error.message, true);
+            }
+        }
+
+        async function removeWaitingCustomer(customerId) {
+            try {
+                await queueMutate("remove_customer", { id: customerId });
+            } catch (error) {
+                showActionToast(error.message, true);
+            }
+        }
+
+        async function arriveAppointment(appointmentId) {
+            try {
+                await queueMutate("arrive_appointment", { id: appointmentId });
+                showActionToast("Guest moved to the waiting queue.", false);
+            } catch (error) {
+                showActionToast(error.message, true);
+            }
+        }
+
+        async function cancelAppointment(appointmentId) {
+            try {
+                await queueMutate("cancel_appointment", { id: appointmentId });
+                showActionToast("Appointment cancelled.", false);
+            } catch (error) {
+                showActionToast(error.message, true);
+            }
+        }
+
+        function renderSalonServicesEditor() {
+            const el = document.getElementById("salonServicesEditor");
+            if (!el) return;
+            if (!servicesMenu.length) {
+                el.innerHTML = `<div style="color:#a58f6b;">No services yet.</div>`;
+                return;
+            }
+            el.innerHTML = servicesMenu.map((service, idx) => {
+                return `<div class="activity-row" style="background:#2a221b;border-radius:10px;padding:8px 10px;margin-bottom:6px;">
+                    <span>${escapeHtml(service.name)} • $${Number(service.price || 0).toFixed(2)}</span>
+                    <button type="button" class="btn-small" style="background:#6b3030;color:#f5f0e8;" onclick="removeSalonServiceRow(${idx})">Remove</button>
+                </div>`;
+            }).join("");
+        }
+
+        function addSalonServiceRow() {
+            const name = document.getElementById("newServiceNameInput").value.trim();
+            const price = Number(document.getElementById("newServicePriceInput").value);
+            if (!name || !Number.isFinite(price) || price < 0) {
+                showManagerMessage("Enter a service name and valid price.", true);
+                return;
+            }
+            servicesMenu = servicesMenu.concat([{ name: name.slice(0, 80), price: Number(price.toFixed(2)) }]);
+            document.getElementById("newServiceNameInput").value = "";
+            document.getElementById("newServicePriceInput").value = "";
+            renderSalonServicesEditor();
+        }
+
+        function removeSalonServiceRow(index) {
+            servicesMenu = servicesMenu.filter((_, idx) => idx !== index);
+            renderSalonServicesEditor();
+        }
+
+        async function saveSalonServicesFromManager() {
+            try {
+                const { ok, data } = await apiRequest("/api/salon/settings", {
+                    method: "PUT",
+                    token: managerAuthToken,
+                    body: { services: servicesMenu }
+                });
+                if (!ok || !data.ok) throw new Error(data.error || "Could not save menu.");
+                applySalonSettings(data.settings);
+                showManagerMessage("Service menu saved.");
+                addManagerActivity("Updated salon service menu.", "success");
+            } catch (error) {
+                showManagerMessage(error.message, true);
+            }
+        }
+
+        async function saveSalonSettingsFromManager() {
+            const salonName = document.getElementById("salonNameInput").value.trim();
+            const tagline = document.getElementById("salonTaglineInput").value.trim();
+            const percent = Number(document.getElementById("commissionRateInput").value);
+            const idle = Number(document.getElementById("idleLockInput").value);
+            try {
+                const { ok, data } = await apiRequest("/api/salon/settings", {
+                    method: "PUT",
+                    token: managerAuthToken,
+                    body: {
+                        salonName,
+                        tagline,
+                        commissionRate: percent / 100,
+                        idleLockMinutes: idle
+                    }
+                });
+                if (!ok || !data.ok) throw new Error(data.error || "Could not save salon settings.");
+                applySalonSettings(data.settings);
+                showManagerMessage("Salon settings saved.");
+                addManagerActivity("Updated salon settings.", "success");
+            } catch (error) {
+                showManagerMessage(error.message, true);
+            }
+        }
+
+        async function runEndOfDay() {
+            if (!confirm("End of day will clear the waiting list and clock every tech out. Continue?")) return;
+            try {
+                const { ok, data } = await apiRequest("/api/salon/end-of-day", {
+                    method: "POST",
+                    token: managerAuthToken,
+                    body: {}
+                });
+                if (!ok || !data.ok) throw new Error(data.error || "End of day failed.");
+                if (data.state) applySharedStateFromServer(data.state);
+                todayServiceCount = 0;
+                showManagerMessage("Day closed. Waiting list cleared.");
+                showActionToast("End of day complete.", false);
+                addManagerActivity("Ran end of day close.", "success");
+            } catch (error) {
+                showManagerMessage(error.message, true);
+            }
+        }
+
+        function openReceiptModal(receipt) {
+            lastReceipt = receipt;
+            const body = document.getElementById("receiptModalBody");
+            if (!body) return;
+            const services = (receipt.selectedServices || []).join(", ") || "No catalog items";
+            body.innerHTML = `<div><strong>${escapeHtml(receipt.salonName || "NailQue")}</strong></div>
+                <div style="margin-top:8px;">${escapeHtml(receipt.customer || "Guest")} • ${escapeHtml(receipt.tech || "")}</div>
+                <div style="color:#a58f6b;margin-top:8px;">${escapeHtml(services)}</div>
+                <div style="margin-top:12px;font-size:22px;color:#d4af77;">$${Number(receipt.total || 0).toFixed(2)}</div>
+                <div style="color:#a58f6b;">Tech share: $${Number(receipt.employeeShare || 0).toFixed(2)}</div>`;
+            document.getElementById("receiptModal").style.display = "flex";
+        }
+
+        function closeReceiptModal() {
+            document.getElementById("receiptModal").style.display = "none";
+        }
+
+        function printCurrentReceipt() {
+            if (!lastReceipt || !lastReceipt.receiptId) return;
+            window.open("/receipt/" + encodeURIComponent(lastReceipt.receiptId), "_blank");
+        }
+
+        function touchManagerActivity() {
+            lastManagerActivityAt = Date.now();
+        }
+
+        function openForcePinModal() {
+            document.getElementById("forceCurrentPinInput").value = "";
+            document.getElementById("forceNewPinInput").value = "";
+            document.getElementById("forceNewPinConfirmInput").value = "";
+            document.getElementById("forcePinMessage").textContent = "";
+            document.getElementById("forcePinModal").style.display = "flex";
+        }
+
+        async function submitForcedPinChange() {
+            const msg = document.getElementById("forcePinMessage");
+            const currentPin = document.getElementById("forceCurrentPinInput").value.trim();
+            const newPin = document.getElementById("forceNewPinInput").value.trim();
+            const confirmPin = document.getElementById("forceNewPinConfirmInput").value.trim();
+            if (!currentPin || !newPin) {
+                msg.textContent = "Enter the current and new PIN.";
+                return;
+            }
+            if (newPin !== confirmPin) {
+                msg.textContent = "New PINs do not match.";
+                return;
+            }
+            try {
+                const { ok, data } = await apiRequest("/api/manager/set-pin", {
+                    method: "POST",
+                    token: managerAuthToken,
+                    body: { currentPin, newPin }
+                });
+                if (!ok) throw new Error(data.error || "Could not update PIN.");
+                managerMustChangePin = false;
+                document.getElementById("forcePinModal").style.display = "none";
+                showActionToast("Manager PIN updated.", false);
+                await openManagerModal();
+            } catch (error) {
+                msg.textContent = error.message;
+            }
+        }
+
         async function init() {
-            loadQueueState();
+            const setup = await apiRequest("/api/setup/status");
+            if (setup.ok && setup.data && setup.data.setupComplete === false) {
+                window.location.replace("/setup");
+                return;
+            }
             loadBonusSettings();
             const loadedFromServer = await fetchSharedStateFromServer();
+            if (!loadedFromServer) loadQueueState();
             initializeSharedTechConfig();
-            if (!loadedFromServer || !credentialsConfiguredOnServer) {
-                await syncSharedStateToServer();
-            }
             if (credentialsConfiguredOnServer) {
                 localStorage.removeItem("nailTechCredentials");
             }
@@ -2029,9 +2149,12 @@ const servicesMenu = [
             if (savedTheme === "light") document.body.classList.add("light-theme");
             renderTechBoard();
             renderQueue();
+            renderAppointments();
             const managerTechList = document.getElementById("managerTechList");
             managerTechList.addEventListener("click", onManagerTechListClick);
             managerTechList.addEventListener("change", onManagerTechListChange);
+            document.getElementById("managerModal").addEventListener("pointerdown", touchManagerActivity);
+            document.getElementById("managerModal").addEventListener("keydown", touchManagerActivity);
             document.getElementById("customerNameInput").addEventListener("keydown", (event) => {
                 if (event.key === "Enter") submitAddCustomerModal();
             });
@@ -2126,13 +2249,21 @@ const servicesMenu = [
             }, 12000);
             setInterval(() => {
                 fetchSharedStateFromServer();
-            }, 4000);
+            }, 2000);
+            setInterval(() => {
+                const managerOpen = document.getElementById("managerModal").style.display === "flex";
+                if (!managerOpen || !managerAuthToken) return;
+                const idleMs = Math.max(1, Number(salonSettings.idleLockMinutes || 5)) * 60 * 1000;
+                if (Date.now() - lastManagerActivityAt >= idleMs) {
+                    closeManagerModal();
+                    showActionToast("Tech Management locked after idle.", true);
+                }
+            }, 5000);
             updateClock();
             setupSoundEffects();
             fetchUpdateStatus(false);
-            fetchServiceHistory();
             setTimeout(() => playSoundEffect("startup"), 220);
             updateCurrentManagerLabel();
-            console.log("%c✅ M. VINCÉ Nail Spa Queue System Ready with Tech Management", "color:#d4af77;font-size:18px");
+            console.log("%c✅ NailQue queue ready", "color:#d4af77;font-size:18px");
         }
         window.onload = init;

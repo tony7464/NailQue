@@ -39,12 +39,16 @@
             letter-spacing: 4px;
         }
 
-        .header::after {
-            content: "NAIL SPA";
+        .header-tagline {
             display: block;
             font-size: 18px;
             letter-spacing: 6px;
             margin-top: 4px;
+        }
+
+        .queue-item-actions {
+            display: flex;
+            gap: 6px;
         }
 
         .main { flex: 1; display: flex; gap: 24px; padding: 24px; overflow: hidden; }

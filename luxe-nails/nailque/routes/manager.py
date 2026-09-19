@@ -26,7 +26,12 @@ def verify_manager_pin():
         {"username": manager["username"], "fullName": manager["fullName"]},
         client_ip(),
     )
-    return jsonify({"ok": True, "token": token, "manager": public_manager(manager)})
+    return jsonify({
+        "ok": True,
+        "token": token,
+        "manager": public_manager(manager),
+        "mustChangePin": bool(manager.get("mustChangePin")),
+    })
 
 
 @manager_bp.route("/api/manager/set-pin", methods=["POST"])

@@ -55,6 +55,7 @@ def run_qa() -> int:
         "luxe-nails-queue.html",
         "luxe-nails-employee.html",
         "luxe-nails-mobile.html",
+        "luxe-nails-setup.html",
         "static/js/http.js",
         "static/js/queue.js",
         "static/css/queue.css",
@@ -90,6 +91,24 @@ def run_qa() -> int:
         started = _wait_for_port(host, port, timeout_s=15.0)
         _record(results, "Server starts", started, f"Port {port} opened" if started else "Server did not start in time")
         if started:
+            try:
+                status, body = _http_get(base + "/api/setup/status")
+                payload = json.loads(body)
+                if not payload.get("setupComplete"):
+                    status, body = _http_post_json(base + "/api/setup", {
+                        "salonName": "QA Salon",
+                        "tagline": "NAIL SPA",
+                        "fullName": "Admin User",
+                        "username": "admin",
+                        "pin": "1234",
+                    })
+                    payload = json.loads(body)
+                    _record(results, "POST /api/setup", status == 200 and payload.get("ok") is True, f"status={status}")
+                else:
+                    _record(results, "POST /api/setup", True, "already complete")
+            except (URLError, json.JSONDecodeError) as err:
+                _record(results, "POST /api/setup", False, f"request failed: {err}")
+
             for route in ["/", "/employee", "/api/health"]:
                 try:
                     status, body = _http_get(base + route)
