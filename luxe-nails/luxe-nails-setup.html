@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NailQue • First-run setup</title>
+    <link rel="stylesheet" href="/static/css/queue.css">
+    <link rel="stylesheet" href="/static/css/setup.css">
+</head>
+<body class="setup-body">
+    <div class="setup-card">
+        <div class="setup-kicker">NailQue</div>
+        <h1>Set up this salon</h1>
+        <p class="setup-copy">Create the first manager account. The default PIN <code>1234</code> is allowed only as a temporary value — you will be asked to change it.</p>
+        <label class="field-label" for="setupSalonName">Salon name</label>
+        <input id="setupSalonName" class="text-input" type="text" placeholder="e.g. M. VINCÉ Nail Spa" />
+        <label class="field-label" for="setupTagline">Tagline</label>
+        <input id="setupTagline" class="text-input" type="text" placeholder="NAIL SPA" value="NAIL SPA" />
+        <label class="field-label" for="setupFullName">Manager full name</label>
+        <input id="setupFullName" class="text-input" type="text" placeholder="First and last name" />
+        <label class="field-label" for="setupUsername">Username</label>
+        <input id="setupUsername" class="text-input" type="text" placeholder="admin" />
+        <label class="field-label" for="setupPin">PIN (4–12 digits)</label>
+        <input id="setupPin" class="text-input" type="password" inputmode="numeric" placeholder="Choose a PIN" />
+        <label class="field-label" for="setupPinConfirm">Confirm PIN</label>
+        <input id="setupPinConfirm" class="text-input" type="password" inputmode="numeric" placeholder="Repeat PIN" />
+        <div id="setupMessage" class="setup-message"></div>
+        <button type="button" id="setupSubmit" onclick="submitSetup()">CREATE SALON</button>
+    </div>
+    <script src="/static/js/http.js"></script>
+    <script src="/static/js/setup.js"></script>
+</body>
+</html>

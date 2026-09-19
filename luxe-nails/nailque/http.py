@@ -35,6 +35,11 @@ def _session_from_store(store) -> dict | None:
     return store.resolve(token, client_ip())
 
 
+def optional_manager_session() -> dict | None:
+    ctx = get_ctx()
+    return _session_from_store(ctx.manager_sessions)
+
+
 def require_manager(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):

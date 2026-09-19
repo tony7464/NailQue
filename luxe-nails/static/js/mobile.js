@@ -29,6 +29,7 @@ let authToken = localStorage.getItem("mobileTechToken") || "";
             const current = payload.techState && payload.techState.current ? payload.techState.current : "";
             currentTechState = payload.techState || {};
             servicesMenu = Array.isArray(payload.servicesMenu) ? payload.servicesMenu : [];
+            window.nailqueCommissionRate = Number(payload.commissionRate || 0.6);
             const hasActiveCustomer = status === "Busy" && !!current;
             if (hasRenderedState && hasActiveCustomer && !hadActiveCustomer) {
                 playCustomerChime();
@@ -226,7 +227,7 @@ let authToken = localStorage.getItem("mobileTechToken") || "";
                 });
             }
             const roundedTotal = Number(total.toFixed(2));
-            const employeeShare = Number((roundedTotal * 0.6).toFixed(2));
+            const employeeShare = Number((roundedTotal * Number(window.nailqueCommissionRate || 0.6)).toFixed(2));
             return {
                 lines,
                 total: roundedTotal,

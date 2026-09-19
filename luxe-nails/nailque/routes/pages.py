@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, make_response, send_from_directory
+from flask import Blueprint, make_response, redirect, send_from_directory
 
 from nailque.factory import get_ctx
 from nailque.http import require_lan
@@ -22,7 +22,18 @@ def _html(filename: str):
 @pages_bp.route("/")
 @pages_bp.route("/luxe-nails-queue.html")
 def main_queue():
+    ctx = get_ctx()
+    if not ctx.managers.is_setup_complete():
+        return redirect("/setup")
     return _html("luxe-nails-queue.html")
+
+
+@pages_bp.route("/setup")
+def setup_wizard():
+    ctx = get_ctx()
+    if ctx.managers.is_setup_complete():
+        return redirect("/")
+    return _html("luxe-nails-setup.html")
 
 
 @pages_bp.route("/employee")
@@ -34,6 +45,12 @@ def employee_portal():
 @require_lan
 def mobile_portal():
     return _html("luxe-nails-mobile.html")
+
+
+@pages_bp.route("/receipt/<receipt_id>")
+@require_lan
+def receipt_page(receipt_id: str):
+    return _html("luxe-nails-receipt.html")
 
 
 @pages_bp.route("/assets/<path:filename>")

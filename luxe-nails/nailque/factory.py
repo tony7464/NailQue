@@ -13,6 +13,7 @@ from nailque.managers import ManagerStore
 from nailque.paths import AppPaths, load_environment
 from nailque.queue import SharedStateStore
 from nailque.records import JsonRecordStore
+from nailque.salon import SalonStore
 from nailque.security import RateLimiter
 from nailque.sessions import TokenStore
 from nailque.settings import Settings
@@ -32,11 +33,13 @@ class AppContext:
             settings.manager_username,
             settings.manager_pin,
         )
+        self.salon = SalonStore(paths.salon_settings_file)
         self.manager_sessions = TokenStore(settings.manager_session_ttl_seconds, bind_ip=True)
         self.mobile_sessions = TokenStore(settings.mobile_session_ttl_seconds, bind_ip=True)
         self.employee_sessions = TokenStore(settings.employee_session_ttl_seconds, bind_ip=True)
         self.activity = JsonRecordStore(paths.manager_activity_file, keep_last=300)
         self.service_history = JsonRecordStore(paths.service_history_file, keep_last=1000)
+        self.daily_closings = JsonRecordStore(paths.daily_closings_file, keep_last=400)
         self.updater = Updater(settings, paths.updates_dir, logger)
         self.removed_logins: dict[str, dict] = {}
 
@@ -76,12 +79,14 @@ def create_app(paths: AppPaths | None = None) -> Flask:
     from nailque.routes.mobile import mobile_bp
     from nailque.routes.pages import pages_bp
     from nailque.routes.queue_api import queue_bp
+    from nailque.routes.salon import salon_bp
     from nailque.routes.updates import updates_bp
 
     app.register_blueprint(pages_bp)
     app.register_blueprint(health_bp)
     app.register_blueprint(manager_bp)
     app.register_blueprint(queue_bp)
+    app.register_blueprint(salon_bp)
     app.register_blueprint(mobile_bp)
     app.register_blueprint(employee_bp)
     app.register_blueprint(updates_bp)

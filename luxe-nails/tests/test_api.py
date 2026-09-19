@@ -63,4 +63,5 @@ def test_queue_pages_load(client):
     assert client.get("/employee").status_code == 200
     assert client.get("/mobile").status_code == 200
     assert client.get("/static/js/http.js").status_code == 200
+    assert client.get("/static/js/setup.js").status_code == 200
     assert client.get("/static/css/queue.css").status_code == 200

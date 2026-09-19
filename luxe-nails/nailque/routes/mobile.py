@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import time
+import uuid
 
 from flask import Blueprint, jsonify, request
 
-from nailque.catalog import SERVICES_MENU, build_service_details
+from nailque.catalog import build_service_details
 from nailque.factory import get_ctx
 from nailque.http import client_ip, rate_limited, require_lan, require_manager, require_mobile
 
@@ -84,7 +85,9 @@ def mobile_state():
         "mustChangePassword": bool(cred_meta.get("mustChangePassword")),
         "waitingQueue": state.get("waitingQueue") or [],
         "techsOverview": _bonus_overview(state),
-        "servicesMenu": SERVICES_MENU,
+        "servicesMenu": ctx.salon.services(),
+        "commissionRate": ctx.salon.commission_rate(),
+        "salonName": ctx.salon.salon_name(),
         "serviceHistory": history,
     })
 
@@ -153,9 +156,16 @@ def mobile_action():
             if not isinstance(selected_indexes_raw, list):
                 return jsonify({"ok": False, "error": "Service selection is invalid."}), 400
             selected_indexes = [int(i) for i in selected_indexes_raw if isinstance(i, int)]
-            details = build_service_details(selected_indexes, custom_addons)
+            details = build_service_details(
+                selected_indexes,
+                custom_addons,
+                services=ctx.salon.services(),
+                commission_rate=ctx.salon.commission_rate(),
+            )
             completed_customer_name = str(tech.get("current") or "Customer")
             completion_record = {
+                "receiptId": uuid.uuid4().hex,
+                "salonName": ctx.salon.salon_name(),
                 "tech": tech_name,
                 "customer": completed_customer_name,
                 "selectedServiceIndexes": details["selectedServiceIndexes"],
@@ -163,6 +173,7 @@ def mobile_action():
                 "customAddons": details["customAddons"],
                 "total": details["total"],
                 "employeeShare": details["employeeShare"],
+                "commissionRate": details.get("commissionRate", ctx.salon.commission_rate()),
                 "completedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "source": "mobile",
             }
@@ -190,7 +201,10 @@ def mobile_action():
     if completion_record:
         ctx.service_history.append(completion_record)
     ctx.shared_state.persist()
-    return jsonify({"ok": True, "state": ctx.shared_state.copy_for_client()})
+    payload = {"ok": True, "state": ctx.shared_state.copy_for_client()}
+    if completion_record:
+        payload["receipt"] = completion_record
+    return jsonify(payload)
 
 
 @mobile_bp.route("/api/mobile/active-techs", methods=["GET"])

@@ -3,17 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>M. VINCÉ Nail Spa • Live Queue</title>
+    <title>NailQue • Live Queue</title>
     <link rel="stylesheet" href="/static/css/queue.css">
 
 </head>
 <body>
-    <div class="header">M. VINCÉ</div>
+    <div class="header">
+        <span id="salonHeaderName">NailQue</span>
+        <span class="header-tagline" id="salonTagline">NAIL SPA</span>
+    </div>
     <div class="main">
         <div class="tech-board" id="techBoard"></div>
         <div class="queue-panel">
             <div class="queue-header" id="queueHeaderText">WAITING CUSTOMERS</div>
             <div class="queue-list" id="queueList"></div>
+            <div class="queue-header" style="margin-top:16px;">APPOINTMENT BOOK</div>
+            <div class="queue-list" id="appointmentList"></div>
         </div>
     </div>
     <div class="footer">
@@ -84,7 +89,7 @@
                     <span id="totalAmount" style="color:#d4af77;font-weight:700;">$0.00</span>
                 </div>
                 <div style="display:flex;justify-content:space-between;font-size:18px;color:#a58f6b;margin-top:8px;">
-                    <span>Employee Share (60%)</span>
+                    <span id="employeeShareLabel">Employee Share (60%)</span>
                     <span id="employeeEarnings" style="font-weight:700;">$0.00</span>
                 </div>
             </div>
@@ -121,6 +126,28 @@
                 Show password
             </label>
             <button onclick="createTechAccount()" style="width:100%;background:#d4af77;color:#1a1208;font-size:18px;font-weight:700;padding:12px;border:none;border-radius:9999px;cursor:pointer;">CREATE ACCOUNT</button>
+
+            <div class="section-title">Salon settings</div>
+            <input id="salonNameInput" class="text-input" type="text" placeholder="Salon name" />
+            <input id="salonTaglineInput" class="text-input" type="text" placeholder="Tagline" />
+            <label class="field-label" for="commissionRateInput">Tech commission (percent)</label>
+            <input id="commissionRateInput" class="text-input" type="number" min="5" max="100" step="1" placeholder="60" />
+            <label class="field-label" for="idleLockInput">Tech Management idle lock (minutes)</label>
+            <input id="idleLockInput" class="text-input" type="number" min="1" max="60" step="1" placeholder="5" />
+            <button type="button" onclick="saveSalonSettingsFromManager()" style="width:100%;background:#2d5b4a;color:#f5f0e8;font-size:16px;font-weight:700;padding:10px;border:none;border-radius:9999px;cursor:pointer;">SAVE SALON SETTINGS</button>
+
+            <div class="section-title">Service menu</div>
+            <div id="salonServicesEditor"></div>
+            <div class="row">
+                <input id="newServiceNameInput" class="text-input" type="text" placeholder="Service name" style="flex:1;margin-bottom:0;" />
+                <input id="newServicePriceInput" class="text-input" type="number" min="0" step="0.01" placeholder="Price" style="width:110px;margin-bottom:0;" />
+            </div>
+            <button type="button" onclick="addSalonServiceRow()" style="width:100%;margin-top:8px;background:#3d2a1f;color:#d4af77;font-size:15px;font-weight:700;padding:10px;border:none;border-radius:9999px;cursor:pointer;">ADD SERVICE</button>
+            <button type="button" onclick="saveSalonServicesFromManager()" style="width:100%;margin-top:8px;background:#c48b6f;color:#fff;font-size:16px;font-weight:700;padding:10px;border:none;border-radius:9999px;cursor:pointer;">SAVE MENU</button>
+
+            <div class="section-title">End of day</div>
+            <p style="color:#a58f6b;font-size:13px;margin-bottom:8px;">Clears the waiting list, clocks every tech out, and saves a daily close report. Future booked appointments are kept.</p>
+            <button type="button" onclick="runEndOfDay()" style="width:100%;background:#6b3030;color:#f5f0e8;font-size:16px;font-weight:700;padding:10px;border:none;border-radius:9999px;cursor:pointer;">END OF DAY CLOSE</button>
 
             <div class="section-title">Bonus Round Window</div>
             <div class="row">
@@ -201,6 +228,27 @@
             <div id="managerMessage" style="margin-top:10px;color:#d4af77;font-size:14px;"></div>
 
             <button onclick="closeManagerModal()" style="width:100%;margin-top:14px;background:transparent;color:#d4af77;border:2px solid #d4af77;padding:14px;border-radius:9999px;cursor:pointer;">CLOSE</button>
+        </div>
+    </div>
+
+    <div class="modal" id="forcePinModal" style="display:none;">
+        <div class="modal-content" style="max-width:420px; width:100%; background:#1f1914; border-radius:18px; padding:24px;">
+            <div class="modal-title" style="color:#d4af77; font-size:24px; font-weight:700;">Change manager PIN</div>
+            <p style="color:#a58f6b; font-size:14px; margin-top:8px;">This account still uses a temporary PIN. Choose a new 4–12 digit PIN before opening Tech Management.</p>
+            <input id="forceCurrentPinInput" class="text-input" type="password" inputmode="numeric" placeholder="Current PIN" />
+            <input id="forceNewPinInput" class="text-input" type="password" inputmode="numeric" placeholder="New PIN" />
+            <input id="forceNewPinConfirmInput" class="text-input" type="password" inputmode="numeric" placeholder="Confirm new PIN" />
+            <div id="forcePinMessage" style="margin-top:10px; font-size:14px; min-height:20px;"></div>
+            <button type="button" onclick="submitForcedPinChange()" style="width:100%;margin-top:12px;background:#d4af77;color:#1a1208;font-size:18px;font-weight:700;padding:14px;border:none;border-radius:9999px;cursor:pointer;">SAVE NEW PIN</button>
+        </div>
+    </div>
+
+    <div class="modal" id="receiptModal" style="display:none;">
+        <div class="modal-content" style="max-width:480px; width:100%; background:#1f1914; border-radius:18px; padding:24px;">
+            <div class="modal-title" style="color:#d4af77; font-size:24px; font-weight:700;">Receipt</div>
+            <div id="receiptModalBody" style="color:#f5f0e8;margin-top:12px;"></div>
+            <button type="button" onclick="printCurrentReceipt()" style="width:100%;margin-top:12px;background:#2d4f75;color:#f5f0e8;font-size:16px;font-weight:700;padding:12px;border:none;border-radius:9999px;cursor:pointer;">OPEN PRINTABLE RECEIPT</button>
+            <button type="button" onclick="closeReceiptModal()" style="width:100%;margin-top:10px;background:transparent;color:#d4af77;border:2px solid #d4af77;padding:12px;border-radius:9999px;cursor:pointer;">CLOSE</button>
         </div>
     </div>
 

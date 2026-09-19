@@ -52,6 +52,8 @@ class AppPaths:
         self.shared_state_file = self.runtime_dir / "shared_state.json"
         self.service_history_file = self.runtime_dir / "service_history.json"
         self.manager_activity_file = self.runtime_dir / "manager_activity_log.json"
+        self.salon_settings_file = self.runtime_dir / "salon_settings.json"
+        self.daily_closings_file = self.runtime_dir / "daily_closings.json"
         self.secret_key_file = self.runtime_dir / "secret_key"
         self.static_dir = self.assets_dir / "static"
         self.assets_public_dir = self.assets_dir / "assets"

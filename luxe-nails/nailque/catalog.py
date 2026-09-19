@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-SERVICES_MENU = [
+from copy import deepcopy
+from typing import Any
+
+DEFAULT_SERVICES_MENU = [
     {"name": "Spa Manicure", "price": 40},
     {"name": "Signature Manicure", "price": 50},
     {"name": "Ultimate M.V. Spa Manicure", "price": 65},
@@ -21,8 +24,54 @@ SERVICES_MENU = [
     {"name": "Hot Stone Massage", "price": 15},
 ]
 
+# Backwards-compatible alias used by older imports and tests.
+SERVICES_MENU = DEFAULT_SERVICES_MENU
 
-def build_service_details(selected_service_indexes, custom_addons=None) -> dict:
+DEFAULT_COMMISSION_RATE = 0.6
+
+
+def copy_default_services() -> list[dict[str, Any]]:
+    return deepcopy(DEFAULT_SERVICES_MENU)
+
+
+def normalize_services_menu(raw) -> list[dict[str, Any]]:
+    menu = []
+    if not isinstance(raw, list):
+        return copy_default_services()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()[:80]
+        if not name:
+            continue
+        try:
+            price = round(float(item.get("price") or 0), 2)
+        except (TypeError, ValueError):
+            continue
+        if price < 0:
+            continue
+        menu.append({"name": name, "price": price})
+    return menu or copy_default_services()
+
+
+def normalize_commission_rate(raw, default: float = DEFAULT_COMMISSION_RATE) -> float:
+    try:
+        rate = float(raw)
+    except (TypeError, ValueError):
+        return default
+    if rate < 0.05 or rate > 1:
+        return default
+    return round(rate, 4)
+
+
+def build_service_details(
+    selected_service_indexes,
+    custom_addons=None,
+    services=None,
+    commission_rate: float = DEFAULT_COMMISSION_RATE,
+) -> dict:
+    menu = services if isinstance(services, list) and services else DEFAULT_SERVICES_MENU
+    rate = normalize_commission_rate(commission_rate)
     total = 0.0
     selected_indexes = []
     selected_services = []
@@ -30,10 +79,10 @@ def build_service_details(selected_service_indexes, custom_addons=None) -> dict:
     for idx in selected_service_indexes:
         if not isinstance(idx, int):
             continue
-        if idx < 0 or idx >= len(SERVICES_MENU):
+        if idx < 0 or idx >= len(menu):
             continue
         selected_indexes.append(idx)
-        service = SERVICES_MENU[idx]
+        service = menu[idx]
         selected_services.append(service["name"])
         total += float(service["price"])
     if isinstance(custom_addons, list):
@@ -58,5 +107,6 @@ def build_service_details(selected_service_indexes, custom_addons=None) -> dict:
         "selectedServices": selected_services,
         "customAddons": normalized_addons,
         "total": total,
-        "employeeShare": round(total * 0.6, 2),
+        "employeeShare": round(total * rate, 2),
+        "commissionRate": rate,
     }

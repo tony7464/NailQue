@@ -1,0 +1,54 @@
+.setup-body {
+    overflow: auto;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    display: flex;
+    padding: 32px 16px;
+}
+.setup-card {
+    width: min(520px, 100%);
+    background: #1f1914;
+    border-radius: 24px;
+    padding: 32px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.setup-kicker {
+    color: #d4af77;
+    letter-spacing: 0.35em;
+    font-size: 12px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.setup-card h1 {
+    font-family: "Playfair Display", serif;
+    color: #f5f0e8;
+    font-size: 36px;
+    margin-bottom: 10px;
+}
+.setup-copy {
+    color: #a58f6b;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 18px;
+}
+.setup-copy code {
+    color: #d4af77;
+}
+.setup-message {
+    min-height: 22px;
+    margin: 8px 0 12px;
+    color: #ff9b9b;
+    font-size: 14px;
+}
+#setupSubmit {
+    width: 100%;
+    background: #d4af77;
+    color: #1a1208;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 14px;
+    border: none;
+    border-radius: 9999px;
+    cursor: pointer;
+}

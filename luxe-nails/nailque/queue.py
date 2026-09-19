@@ -10,12 +10,22 @@ from typing import Any
 from nailque.security import hash_secret, is_hashed_secret, verify_secret
 from nailque.storage import read_json, write_json_atomic
 
+ALLOWED_STATUSES = {
+    "Offline",
+    "Available",
+    "Busy",
+    "On Break",
+    "Scheduled Appointment",
+}
+
 
 def empty_shared_state() -> dict[str, Any]:
     return {
         "techs": {},
         "waitingQueue": [],
+        "appointments": [],
         "nextCustomerId": 1,
+        "nextAppointmentId": 1,
         "bonusClockIns": {},
         "credentials": {},
         "updatedAt": int(time.time()),
@@ -38,7 +48,9 @@ def sanitize_state_for_client(state: dict[str, Any], include_credential_meta: bo
     payload = {
         "techs": deepcopy(state.get("techs") or {}),
         "waitingQueue": deepcopy(state.get("waitingQueue") or []),
+        "appointments": deepcopy(state.get("appointments") or []),
         "nextCustomerId": int(state.get("nextCustomerId") or 1),
+        "nextAppointmentId": int(state.get("nextAppointmentId") or 1),
         "bonusClockIns": deepcopy(state.get("bonusClockIns") or {}),
         "updatedAt": int(state.get("updatedAt") or 0),
         "credentialsConfigured": bool(state.get("credentials")),
@@ -46,6 +58,10 @@ def sanitize_state_for_client(state: dict[str, Any], include_credential_meta: bo
     if include_credential_meta:
         payload["credentialMeta"] = public_credential_meta(state.get("credentials") or {})
     return payload
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 
 def available_tech_order(state: dict[str, Any]) -> list[str]:
@@ -62,7 +78,7 @@ def try_auto_assign(state: dict[str, Any]) -> None:
     queue = state.get("waitingQueue") or []
     if not queue:
         return
-    now_ms = int(time.time() * 1000)
+    now_ms = _now_ms()
 
     def assignable_index(tech_name: str) -> int:
         for idx, customer in enumerate(queue):
@@ -133,6 +149,39 @@ def find_tech_by_login(credentials: dict, identifier: str, password: str) -> tup
     return None, None, False
 
 
+def _blank_tech() -> dict[str, Any]:
+    return {"status": "Offline", "current": None, "startTime": None, "earnings": 0}
+
+
+def _ensure_tech(state: dict[str, Any], name: str) -> dict[str, Any]:
+    techs = state.setdefault("techs", {})
+    tech = techs.get(name)
+    if not isinstance(tech, dict):
+        tech = _blank_tech()
+        techs[name] = tech
+    tech.setdefault("status", "Offline")
+    tech.setdefault("current", None)
+    tech.setdefault("startTime", None)
+    tech.setdefault("earnings", 0)
+    return tech
+
+
+def _return_customer_to_queue(state: dict[str, Any], customer_name: str) -> None:
+    if not customer_name:
+        return
+    queue = state.setdefault("waitingQueue", [])
+    next_id = int(state.get("nextCustomerId") or 1)
+    queue.insert(0, {
+        "id": next_id,
+        "name": customer_name,
+        "arrival": _now_ms(),
+        "requestedTech": "",
+        "appointmentTime": None,
+    })
+    state["nextCustomerId"] = next_id + 1
+    state["waitingQueue"] = queue
+
+
 class SharedStateStore:
     def __init__(self, state_file):
         self.state_file = state_file
@@ -147,6 +196,14 @@ class SharedStateStore:
             saved = empty_shared_state()
         merged = empty_shared_state()
         merged.update({key: saved[key] for key in merged if key in saved})
+        if not isinstance(merged.get("techs"), dict):
+            merged["techs"] = {}
+        if not isinstance(merged.get("waitingQueue"), list):
+            merged["waitingQueue"] = []
+        if not isinstance(merged.get("appointments"), list):
+            merged["appointments"] = []
+        if not isinstance(merged.get("bonusClockIns"), dict):
+            merged["bonusClockIns"] = {}
         merged["credentials"] = hash_credential_map(merged.get("credentials") or {})
         self.state = merged
         self._credentials_bootstrapped = bool(self.state.get("credentials"))
@@ -162,15 +219,8 @@ class SharedStateStore:
             return sanitize_state_for_client(self.state, include_credential_meta=include_credential_meta)
 
     def apply_desk_sync(self, payload: dict[str, Any], allow_credential_bootstrap: bool = False) -> dict[str, Any]:
+        """Legacy full-state POST. Queue/techs are server-owned and are not replaced."""
         with self.lock:
-            if isinstance(payload.get("techs"), dict):
-                self.state["techs"] = payload.get("techs")
-            if isinstance(payload.get("waitingQueue"), list):
-                self.state["waitingQueue"] = payload.get("waitingQueue")
-            if isinstance(payload.get("bonusClockIns"), dict):
-                self.state["bonusClockIns"] = payload.get("bonusClockIns")
-            if isinstance(payload.get("nextCustomerId"), int):
-                self.state["nextCustomerId"] = payload.get("nextCustomerId")
             incoming_credentials = payload.get("credentials")
             if (
                 allow_credential_bootstrap
@@ -183,6 +233,286 @@ class SharedStateStore:
             try_auto_assign(self.state)
         self.persist()
         return self.copy_for_client()
+
+    def add_customer(self, name: str, requested_tech: str = "", appointment_time=None) -> dict[str, Any]:
+        clean_name = str(name or "").strip()[:80]
+        if not clean_name:
+            raise ValueError("Customer name is required.")
+        requested = str(requested_tech or "").strip()
+        appt = None
+        if appointment_time not in (None, "", 0):
+            try:
+                appt = int(appointment_time)
+            except (TypeError, ValueError) as error:
+                raise ValueError("Appointment time is invalid.") from error
+        with self.lock:
+            if requested and requested not in (self.state.get("techs") or {}):
+                raise ValueError("Requested tech was not found.")
+            customer_id = int(self.state.get("nextCustomerId") or 1)
+            self.state.setdefault("waitingQueue", []).append({
+                "id": customer_id,
+                "name": clean_name,
+                "arrival": _now_ms(),
+                "requestedTech": requested,
+                "appointmentTime": appt,
+            })
+            self.state["nextCustomerId"] = customer_id + 1
+            try_auto_assign(self.state)
+        self.persist()
+        return self.copy_for_client()
+
+    def remove_customer(self, customer_id: int) -> dict[str, Any]:
+        with self.lock:
+            queue = self.state.get("waitingQueue") or []
+            remaining = [item for item in queue if int(item.get("id") or 0) != int(customer_id)]
+            if len(remaining) == len(queue):
+                raise ValueError("Customer was not found in the waiting queue.")
+            self.state["waitingQueue"] = remaining
+        self.persist()
+        return self.copy_for_client()
+
+    def skip_customer(self, customer_id: int) -> dict[str, Any]:
+        with self.lock:
+            queue = list(self.state.get("waitingQueue") or [])
+            idx = next((i for i, item in enumerate(queue) if int(item.get("id") or 0) == int(customer_id)), -1)
+            if idx < 0:
+                raise ValueError("Customer was not found in the waiting queue.")
+            customer = queue.pop(idx)
+            queue.append(customer)
+            self.state["waitingQueue"] = queue
+            try_auto_assign(self.state)
+        self.persist()
+        return self.copy_for_client()
+
+    def upsert_tech(self, name: str) -> dict[str, Any]:
+        clean = str(name or "").strip()
+        if not clean:
+            raise ValueError("Tech name is required.")
+        with self.lock:
+            _ensure_tech(self.state, clean)
+        self.persist()
+        return self.copy_for_client()
+
+    def remove_tech(self, name: str) -> dict[str, Any]:
+        with self.lock:
+            techs = dict(self.state.get("techs") or {})
+            if name not in techs:
+                raise ValueError("Tech was not found.")
+            if len(techs) <= 1:
+                raise ValueError("You must keep at least one active tech account.")
+            tech = techs.pop(name)
+            if (tech or {}).get("status") == "Busy" and tech.get("current"):
+                _return_customer_to_queue(self.state, str(tech.get("current")))
+            bonus = dict(self.state.get("bonusClockIns") or {})
+            bonus.pop(name, None)
+            self.state["techs"] = techs
+            self.state["bonusClockIns"] = bonus
+            try_auto_assign(self.state)
+        self.persist()
+        return self.copy_for_client()
+
+    def restore_tech(self, name: str, snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
+        with self.lock:
+            techs = dict(self.state.get("techs") or {})
+            restored = dict(snapshot or _blank_tech())
+            restored.setdefault("status", "Offline")
+            restored.setdefault("current", None)
+            restored.setdefault("startTime", None)
+            restored.setdefault("earnings", 0)
+            techs[name] = restored
+            self.state["techs"] = techs
+        self.persist()
+        return self.copy_for_client()
+
+    def set_tech_status(self, name: str, status: str, return_customer: bool = True) -> dict[str, Any]:
+        if status not in ALLOWED_STATUSES:
+            raise ValueError("Unsupported tech status.")
+        with self.lock:
+            tech = (self.state.get("techs") or {}).get(name)
+            if not tech:
+                raise ValueError("Tech was not found.")
+            now_ms = _now_ms()
+            previous = str(tech.get("status") or "Offline")
+            current_customer = str(tech.get("current") or "")
+            if previous == "Busy" and status != "Busy" and current_customer and return_customer:
+                _return_customer_to_queue(self.state, current_customer)
+            if status == "Available":
+                bonus = dict(self.state.get("bonusClockIns") or {})
+                if not bonus.get(name):
+                    bonus[name] = now_ms
+                self.state["bonusClockIns"] = bonus
+            if status != "Busy":
+                tech["current"] = None
+                tech["startTime"] = None
+            elif not tech.get("current"):
+                tech["startTime"] = now_ms
+            tech["status"] = status
+            self.state["techs"][name] = tech
+            try_auto_assign(self.state)
+        self.persist()
+        return self.copy_for_client()
+
+    def reassign_customer(self, from_tech: str, to_tech: str) -> dict[str, Any]:
+        if from_tech == to_tech:
+            raise ValueError("Source and destination must be different techs.")
+        with self.lock:
+            techs = self.state.get("techs") or {}
+            source = techs.get(from_tech)
+            dest = techs.get(to_tech)
+            if not source or not dest:
+                raise ValueError("Selected tech could not be found.")
+            if source.get("status") != "Busy" or not source.get("current"):
+                raise ValueError(f"{from_tech} does not have an active customer to reassign.")
+            if dest.get("status") == "Busy":
+                raise ValueError(f"{to_tech} is currently busy.")
+            customer_name = source.get("current")
+            now_ms = _now_ms()
+            source["status"] = "Available"
+            source["current"] = None
+            source["startTime"] = None
+            dest["status"] = "Busy"
+            dest["current"] = customer_name
+            dest["startTime"] = now_ms
+            bonus = dict(self.state.get("bonusClockIns") or {})
+            if not bonus.get(from_tech):
+                bonus[from_tech] = now_ms
+            self.state["bonusClockIns"] = bonus
+            techs[from_tech] = source
+            techs[to_tech] = dest
+            self.state["techs"] = techs
+        self.persist()
+        return self.copy_for_client()
+
+    def skip_turn(self, name: str) -> dict[str, Any]:
+        with self.lock:
+            techs = self.state.get("techs") or {}
+            tech = techs.get(name)
+            if not tech or tech.get("status") != "Available":
+                raise ValueError(f"{name} must be available to skip a turn.")
+            order = available_tech_order(self.state)
+            if not order or order[0] != name:
+                raise ValueError(f"{name} is not next in rotation right now.")
+            bonus = dict(self.state.get("bonusClockIns") or {})
+            latest = max([int(value or 0) for value in bonus.values()] + [0])
+            bonus[name] = latest + 1
+            self.state["bonusClockIns"] = bonus
+            try_auto_assign(self.state)
+        self.persist()
+        return self.copy_for_client()
+
+    def finish_service(self, tech_name: str, details: dict[str, Any]) -> tuple[dict[str, Any], str]:
+        with self.lock:
+            tech = (self.state.get("techs") or {}).get(tech_name)
+            if not tech:
+                raise ValueError("Tech was not found.")
+            if tech.get("status") != "Busy":
+                raise ValueError(f"{tech_name} is not currently serving a customer.")
+            customer_name = str(tech.get("current") or "Customer")
+            share = float(details.get("employeeShare") or 0)
+            tech["earnings"] = round(float(tech.get("earnings") or 0) + share, 2)
+            tech["status"] = "Available"
+            tech["current"] = None
+            tech["startTime"] = None
+            bonus = dict(self.state.get("bonusClockIns") or {})
+            if not bonus.get(tech_name):
+                bonus[tech_name] = _now_ms()
+            self.state["bonusClockIns"] = bonus
+            self.state["techs"][tech_name] = tech
+            try_auto_assign(self.state)
+        self.persist()
+        return self.copy_for_client(), customer_name
+
+    def add_appointment(self, name: str, appointment_time: int, requested_tech: str = "", notes: str = "") -> dict[str, Any]:
+        clean_name = str(name or "").strip()[:80]
+        if not clean_name:
+            raise ValueError("Customer name is required.")
+        try:
+            when = int(appointment_time)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Appointment time is required.") from error
+        requested = str(requested_tech or "").strip()
+        with self.lock:
+            if requested and requested not in (self.state.get("techs") or {}):
+                raise ValueError("Requested tech was not found.")
+            appt_id = int(self.state.get("nextAppointmentId") or 1)
+            self.state.setdefault("appointments", []).append({
+                "id": appt_id,
+                "name": clean_name,
+                "appointmentTime": when,
+                "requestedTech": requested,
+                "notes": str(notes or "").strip()[:200],
+                "status": "booked",
+            })
+            self.state["nextAppointmentId"] = appt_id + 1
+        self.persist()
+        return self.copy_for_client()
+
+    def arrive_appointment(self, appointment_id: int) -> dict[str, Any]:
+        with self.lock:
+            appointments = self.state.get("appointments") or []
+            found = None
+            for item in appointments:
+                if int(item.get("id") or 0) == int(appointment_id):
+                    found = item
+                    break
+            if not found:
+                raise ValueError("Appointment was not found.")
+            if found.get("status") != "booked":
+                raise ValueError("Only booked appointments can be marked arrived.")
+            found["status"] = "arrived"
+            customer_id = int(self.state.get("nextCustomerId") or 1)
+            self.state.setdefault("waitingQueue", []).append({
+                "id": customer_id,
+                "name": found.get("name") or "Customer",
+                "arrival": _now_ms(),
+                "requestedTech": found.get("requestedTech") or "",
+                "appointmentTime": None,
+            })
+            self.state["nextCustomerId"] = customer_id + 1
+            try_auto_assign(self.state)
+        self.persist()
+        return self.copy_for_client()
+
+    def cancel_appointment(self, appointment_id: int) -> dict[str, Any]:
+        with self.lock:
+            appointments = self.state.get("appointments") or []
+            found = None
+            for item in appointments:
+                if int(item.get("id") or 0) == int(appointment_id):
+                    found = item
+                    break
+            if not found:
+                raise ValueError("Appointment was not found.")
+            found["status"] = "cancelled"
+        self.persist()
+        return self.copy_for_client()
+
+    def end_of_day(self) -> dict[str, Any]:
+        with self.lock:
+            techs = self.state.get("techs") or {}
+            snapshot = {
+                "waitingQueue": deepcopy(self.state.get("waitingQueue") or []),
+                "appointments": deepcopy(self.state.get("appointments") or []),
+                "techs": deepcopy(techs),
+                "closedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            for name, tech in techs.items():
+                details = dict(tech or {})
+                details["status"] = "Offline"
+                details["current"] = None
+                details["startTime"] = None
+                details["earnings"] = 0
+                techs[name] = details
+            self.state["techs"] = techs
+            self.state["waitingQueue"] = []
+            remaining = []
+            for item in self.state.get("appointments") or []:
+                if item.get("status") == "booked" and int(item.get("appointmentTime") or 0) > _now_ms():
+                    remaining.append(item)
+            self.state["appointments"] = remaining
+            self.state["bonusClockIns"] = {}
+        self.persist()
+        return snapshot
 
     def set_tech_login(self, tech_name: str, identifier: str, password: str, must_change: bool = True) -> None:
         with self.lock:
@@ -199,6 +529,7 @@ class SharedStateStore:
                 "mustChangePassword": must_change,
             }
             self.state["credentials"] = credentials
+            _ensure_tech(self.state, tech_name)
             self._credentials_bootstrapped = True
         self.persist()
 
@@ -212,6 +543,7 @@ class SharedStateStore:
             current["mustChangePassword"] = True
             credentials[tech_name] = current
             self.state["credentials"] = credentials
+            _ensure_tech(self.state, tech_name)
         self.persist()
 
     def delete_tech_login(self, tech_name: str) -> dict[str, Any] | None:
@@ -233,6 +565,7 @@ class SharedStateStore:
                 restored["password"] = hash_secret(password)
             credentials[tech_name] = restored
             self.state["credentials"] = credentials
+            _ensure_tech(self.state, tech_name)
             self._credentials_bootstrapped = True
         self.persist()
 
@@ -242,6 +575,8 @@ class SharedStateStore:
             merged = dict(self.state.get("credentials") or {})
             merged.update(hashed)
             self.state["credentials"] = merged
+            for tech_name in hashed:
+                _ensure_tech(self.state, tech_name)
             self._credentials_bootstrapped = bool(merged)
         self.persist()
         return len(hashed)
