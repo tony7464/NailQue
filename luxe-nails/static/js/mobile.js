@@ -30,6 +30,11 @@ let authToken = localStorage.getItem("mobileTechToken") || "";
             currentTechState = payload.techState || {};
             servicesMenu = Array.isArray(payload.servicesMenu) ? payload.servicesMenu : [];
             window.nailqueCommissionRate = Number(payload.commissionRate || 0.6);
+            if (payload.salonName) {
+                const label = document.getElementById("mobileSalonName");
+                if (label) label.textContent = payload.salonName;
+                document.title = payload.salonName + " • Tech Mobile";
+            }
             const hasActiveCustomer = status === "Busy" && !!current;
             if (hasRenderedState && hasActiveCustomer && !hadActiveCustomer) {
                 playCustomerChime();
@@ -414,3 +419,15 @@ let authToken = localStorage.getItem("mobileTechToken") || "";
 
         refreshState();
         setInterval(refreshState, 4000);
+        (async function loadSalonName() {
+            try {
+                const { ok, data } = await apiRequest("/api/salon/settings");
+                if (ok && data.settings && data.settings.salonName) {
+                    const label = document.getElementById("mobileSalonName");
+                    if (label) label.textContent = data.settings.salonName + " • same Wi-Fi as the desk";
+                    document.title = data.settings.salonName + " • Tech Mobile";
+                }
+            } catch (error) {
+                // Keep the default subtitle.
+            }
+        })();

@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>M. VINCÉ Nail Spa • Employee Portal</title>
+    <title>NailQue • Employee Portal</title>
     <link rel="stylesheet" href="/static/css/employee.css">
 
 </head>
 <body>
     <!-- LOGIN SCREEN -->
     <div id="loginScreen" class="main">
-        <div class="header">M. VINCÉ</div>
+        <div class="header" data-salon-name>NailQue</div>
         <div style="text-align:center; margin-bottom:32px;">
             <h1 style="font-size:32px; color:#d4af77;">Employee Portal</h1>
         </div>
@@ -31,7 +31,7 @@
 
     <!-- DASHBOARD -->
     <div id="dashboardScreen" class="main" style="display:none;">
-        <div class="header">M. VINCÉ</div>
+        <div class="header" data-salon-name>NailQue</div>
         
         <div class="welcome">Welcome back,</div>
         <div class="tech-name" id="dashName"></div>
@@ -45,7 +45,7 @@
         <div class="stat-card">
             <div style="font-size:18px; color:#d4af77;">ESTIMATED EARNINGS</div>
             <div id="weekEarnings" class="total-number">$0.00</div>
-            <div style="color:#d4af77; font-size:22px;">(60% of services)</div>
+            <div id="weekEarningsLabel" style="color:#d4af77; font-size:22px;">Tech commission</div>
         </div>
         
         <div class="stat-card">
