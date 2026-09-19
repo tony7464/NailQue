@@ -1,0 +1,163 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Poppins:wght@400;500;600&display=swap');
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: #0f0c0a;
+            color: #f5f0e8;
+            cursor: url("/assets/cursors/windows11-black.cur"), auto;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: linear-gradient(90deg, #1a1208, #3d2a1f);
+            color: #d4af77;
+            text-align: center;
+            padding: 20px;
+            font-family: 'Playfair Display', serif;
+            font-size: 36px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .main {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(16px);
+            border-radius: 28px;
+            padding: 32px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            border: 1px solid rgba(212, 175, 119, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .welcome {
+            font-size: 28px;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 8px;
+            color: #d4af77;
+        }
+        
+        .tech-name {
+            font-size: 42px;
+            font-family: 'Playfair Display', serif;
+            font-weight: 700;
+            text-align: center;
+            color: #f5f0e8;
+            margin-bottom: 32px;
+        }
+        
+        .stat-card {
+            background: rgba(255,255,255,0.08);
+            border-radius: 20px;
+            padding: 32px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        
+        .total-number {
+            font-size: 72px;
+            font-weight: 700;
+            color: #d4af77;
+            line-height: 1;
+        }
+        
+        .daily-list {
+            margin-top: 12px;
+        }
+        
+        .day-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 16px;
+            margin-bottom: 12px;
+            font-size: 20px;
+        }
+        
+        .logout-btn {
+            margin-top: auto;
+            background: #c48b6f;
+            color: #1a1208;
+            font-size: 22px;
+            font-weight: 700;
+            padding: 20px;
+            border: none;
+            border-radius: 9999px;
+            cursor: pointer;
+            width: 100%;
+        }
+        
+        .big-input {
+            width: 100%;
+            padding: 24px;
+            font-size: 28px;
+            font-weight: 600;
+            border: none;
+            border-radius: 20px;
+            background: #1f1914;
+            color: #f5f0e8;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .login-button {
+            background: linear-gradient(90deg, #d4af77, #c48b6f);
+            color: #1a1208;
+            font-size: 28px;
+            font-weight: 700;
+            padding: 24px;
+            border: none;
+            border-radius: 9999px;
+            cursor: pointer;
+        }
+        .nav-back-btn {
+            margin-top: 12px;
+            background: transparent;
+            color: #d4af77;
+            font-size: 18px;
+            font-weight: 600;
+            padding: 14px;
+            border: 2px solid #d4af77;
+            border-radius: 9999px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .helper-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #a58f6b;
+            font-size: 14px;
+            margin-top: -10px;
+            margin-bottom: 16px;
+        }
+
+        .toast {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            min-width: 240px;
+            background: #2a221b;
+            border: 1px solid #d4af77;
+            color: #f5f0e8;
+            padding: 10px 12px;
+            border-radius: 10px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+            display: none;
+            z-index: 9999;
+        }
+
+        .toast.error {
+            border-color: #ff9b9b;
+            color: #ffd9d9;
+        }

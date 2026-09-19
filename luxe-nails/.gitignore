@@ -1,13 +1,22 @@
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
 
 # Runtime secrets/config
 .env
+secret_key
 
 # Runtime state
 manager_settings.json
+shared_state.json
+service_history.json
+manager_activity_log.json
 logs/
+updates/
 
 # Build artifacts
 build/

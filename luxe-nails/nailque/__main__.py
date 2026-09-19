@@ -1,5 +1,3 @@
-"""Thin launcher kept for packaged builds and existing scripts."""
-
 from nailque.app import main
 
 if __name__ == "__main__":

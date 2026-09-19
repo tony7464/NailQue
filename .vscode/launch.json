@@ -1,15 +1,25 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "NailQue (Flask)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/luxe-nails/app.py",
+            "cwd": "${workspaceFolder}/luxe-nails",
+            "env": {
+                "AUTO_OPEN_BROWSER": "false",
+                "AUTO_UPDATE_ENABLED": "false",
+                "DEV_RELOAD": "true",
+                "PORT": "5001"
+            }
+        },
+        {
             "type": "chrome",
             "request": "launch",
-            "name": "Launch Chrome against localhost",
-            "url": "http://localhost:8080",
-            "webRoot": "${workspaceFolder}"
+            "name": "Queue in Chrome",
+            "url": "http://localhost:5001/",
+            "webRoot": "${workspaceFolder}/luxe-nails"
         }
     ]
 }

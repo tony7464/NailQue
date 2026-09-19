@@ -26,8 +26,7 @@ def main() -> int:
     shutil.copy2(exe, release_dir / exe.name)
     for file_name in [
         ".env.example",
-        "PRODUCTION_READINESS.md",
-        "BUILD_EXECUTABLES.md",
+        "INSTALLERS.md",
     ]:
         source = root / file_name
         if source.exists():
