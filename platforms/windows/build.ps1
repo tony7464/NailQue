@@ -1,5 +1,4 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-Set-Location $PSScriptRoot
-python ".\build-installer.py"
+python "$PSScriptRoot\build-installer.py"

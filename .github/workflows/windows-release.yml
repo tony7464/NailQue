@@ -43,8 +43,9 @@ jobs:
           Set-Content -Path platforms/windows/VERSION -Value $version -NoNewline
           Write-Host "Building version $version"
           & .\platforms\windows\build.ps1
-          if (-not (Test-Path "dist-installers\NailQue-Setup-$version.exe")) {
-            throw "Expected installer not found"
+          $installer = Join-Path $PWD "dist-installers\NailQue-Setup-$version.exe"
+          if (-not (Test-Path $installer)) {
+            throw "Expected installer not found: $installer"
           }
 
       - name: Publish GitHub Release
