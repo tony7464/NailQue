@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 OUT_DIR="$ROOT_DIR/dist-installers"
 WORK_BASE="$ROOT_DIR/installer-work/macos"
 APP_NAME="NailQue"
-VERSION_FILE="$ROOT_DIR/VERSION"
+VERSION_FILE="$SCRIPT_DIR/VERSION"
 if [[ -f "$VERSION_FILE" ]]; then
   DEFAULT_VERSION="$(tr -d ' \t\r\n' < "$VERSION_FILE")"
 else
@@ -20,8 +21,12 @@ fi
 
 echo "==> Building one-file executable"
 cd "$ROOT_DIR"
-python3 -m pip install -r requirements.txt
-python3 build_executable.py
+if [[ ! -x "$ROOT_DIR/.venv/bin/python" ]]; then
+  python3 -m venv "$ROOT_DIR/.venv"
+fi
+PYTHON="$ROOT_DIR/.venv/bin/python"
+"$PYTHON" -m pip install -r requirements.txt
+"$PYTHON" tools/build_executable.py
 
 if [[ ! -f "$DIST_DIR/$APP_NAME" ]]; then
   echo "Expected executable not found at $DIST_DIR/$APP_NAME"
@@ -82,17 +87,20 @@ cat >> "$APP_INFO" <<EOF
 EOF
 
 PKG_PATH="$OUT_DIR/NailQue-macOS.pkg"
+VERSIONED_PKG="$OUT_DIR/NailQue-macOS-${APP_VERSION}.pkg"
 echo "==> Building PKG installer"
-rm -f "$PKG_PATH"
+rm -f "$PKG_PATH" "$VERSIONED_PKG"
 pkgbuild \
   --root "$WORK_DIR/payload" \
   --identifier "com.mvince.nailque" \
   --version "$APP_VERSION" \
   --install-location "/" \
   "$PKG_PATH"
+cp "$PKG_PATH" "$VERSIONED_PKG"
 
 echo ""
 echo "Installer created:"
 echo "  $PKG_PATH"
+echo "  $VERSIONED_PKG"
 echo "Version:"
 echo "  $APP_VERSION"

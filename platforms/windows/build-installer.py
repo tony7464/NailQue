@@ -13,15 +13,13 @@ def run(command: list[str], cwd: Path) -> None:
         raise RuntimeError(f"Command failed ({result.returncode}): {' '.join(command)}")
 
 
-def load_version(root: Path) -> str:
-    version_candidates = [root / "VERSION.windows", root / "VERSION"]
-    for version_file in version_candidates:
-        if not version_file.exists():
-            continue
+def load_version(platform_dir: Path) -> str:
+    version_file = platform_dir / "VERSION"
+    if version_file.exists():
         version = version_file.read_text(encoding="utf-8").strip()
         if version:
             return version
-    raise RuntimeError("Missing version value. Create VERSION.windows (or VERSION as fallback).")
+    raise RuntimeError("Missing version value. Create platforms/windows/VERSION.")
 
 
 def safe_version_for_filename(version: str) -> str:
@@ -120,18 +118,19 @@ def main() -> int:
         print("This script must be run on Windows.")
         return 1
 
-    root = Path(__file__).resolve().parents[2]
+    platform_dir = Path(__file__).resolve().parent
+    root = platform_dir.parents[1]
     out_dir = root / "dist-installers"
     work_dir = root / "installer-work" / "windows"
     dist_dir = root / "dist"
     out_dir.mkdir(parents=True, exist_ok=True)
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    version = load_version(root)
+    version = load_version(platform_dir)
     print(f"Building NailQue Windows artifacts for version {version}")
 
     run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], cwd=root)
-    run([sys.executable, "build_executable.py"], cwd=root)
+    run([sys.executable, str(root / "tools" / "build_executable.py")], cwd=root)
 
     exe_path = dist_dir / "NailQue.exe"
     if not exe_path.exists():

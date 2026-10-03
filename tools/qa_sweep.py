@@ -42,22 +42,23 @@ def _record(results: list, name: str, ok: bool, details: str):
 
 
 def run_qa() -> int:
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parents[1]
     port = int(os.getenv("PORT", "5001"))
     host = "127.0.0.1"
     base = f"http://{host}:{port}"
     results = []
 
     required_files = [
-        "app.py",
-        "luxe-nails-queue.html",
-        "luxe-nails-employee.html",
+        "src/nailque/__main__.py",
+        "web/queue.html",
+        "web/employee.html",
         "requirements.txt",
-        "BUILD_EXECUTABLES.md",
-        "PRODUCTION_READINESS.md",
+        "docs/installers.md",
         ".env.example",
-        "build_executable.py",
-        "package-release.py",
+        "tools/build_executable.py",
+        "tools/package_release.py",
+        "platforms/macos/VERSION",
+        "platforms/windows/VERSION",
     ]
     for file_name in required_files:
         exists = (root / file_name).exists()
@@ -68,11 +69,14 @@ def run_qa() -> int:
             "Found" if exists else "Missing required file",
         )
 
-    # Launch app for runtime checks
     env = os.environ.copy()
     env.setdefault("PORT", str(port))
+    env["PYTHONPATH"] = str(root / "src")
+    env["AUTO_OPEN_BROWSER"] = "false"
+    env["USE_DESKTOP_WINDOW"] = "false"
+    env["AUTO_UPDATE_ENABLED"] = "false"
     proc = subprocess.Popen(
-        [sys.executable, "app.py"],
+        [sys.executable, "-m", "nailque"],
         cwd=str(root),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -84,7 +88,6 @@ def run_qa() -> int:
         started = _wait_for_port(host, port, timeout_s=15.0)
         _record(results, "Server starts", started, f"Port {port} opened" if started else "Server did not start in time")
         if started:
-            # Route checks
             for route in ["/", "/employee", "/api/health"]:
                 try:
                     status, body = _http_get(base + route)
@@ -104,7 +107,6 @@ def run_qa() -> int:
                 except URLError as err:
                     _record(results, f"GET {route}", False, f"request failed: {err}")
 
-            # Manager API checks
             try:
                 status, body = _http_post_json(base + "/api/manager/verify-pin", {"pin": "1234"})
                 ok = status == 200 and '"ok":' in body
@@ -112,12 +114,11 @@ def run_qa() -> int:
             except URLError as err:
                 _record(results, "POST /api/manager/verify-pin", False, f"request failed: {err}")
 
-            # Check a known static file route
             try:
-                status, _body = _http_get(base + "/luxe-nails-queue.html")
-                _record(results, "GET /luxe-nails-queue.html", status == 200, f"status={status}")
+                status, _body = _http_get(base + "/web/queue.html")
+                _record(results, "GET /web/queue.html", status == 200, f"status={status}")
             except URLError as err:
-                _record(results, "GET /luxe-nails-queue.html", False, f"request failed: {err}")
+                _record(results, "GET /web/queue.html", False, f"request failed: {err}")
 
     finally:
         try:

@@ -1,1 +1,29 @@
 .DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Runtime secrets/config
+.env
+
+# Runtime state
+manager_settings.json
+shared_state.json
+service_history.json
+manager_activity_log.json
+logs/
+
+# Build artifacts
+build/
+dist/
+dist-installers/
+installer-work/
+installer-inspect/
+qa-reports/
+release/
+*.spec

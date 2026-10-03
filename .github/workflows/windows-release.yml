@@ -1,0 +1,59 @@
+# Build NailQue-Setup.exe and publish a GitHub Release on every push to
+# release/windows. The release is not marked latest so Mac clients that still
+# poll releases/latest keep seeing Mac packages.
+#
+# Version: 1.0.<github.run_number>
+# Tag: windows-v1.0.<github.run_number>
+
+name: Windows release
+
+on:
+  push:
+    branches:
+      - release/windows
+  workflow_dispatch:
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Version, build installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "1.0.$env:GITHUB_RUN_NUMBER"
+          Set-Content -Path platforms/windows/VERSION -Value $version -NoNewline
+          Write-Host "Building version $version"
+          & .\platforms\windows\build.ps1
+          if (-not (Test-Path "dist-installers\NailQue-Setup-$version.exe")) {
+            throw "Expected installer not found"
+          }
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-v1.0.${{ github.run_number }}
+          name: NailQue Windows v1.0.${{ github.run_number }}
+          files: dist-installers/NailQue-Setup-1.0.${{ github.run_number }}.exe
+          generate_release_notes: true
+          make_latest: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

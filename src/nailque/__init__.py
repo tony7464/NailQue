@@ -1,0 +1,1 @@
+"""NailQue salon queue application."""

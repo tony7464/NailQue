@@ -1,7 +1,7 @@
 import platform
+from datetime import datetime
 from pathlib import Path
 import shutil
-from datetime import datetime
 
 
 def executable_name() -> str:
@@ -11,12 +11,12 @@ def executable_name() -> str:
 
 
 def main() -> int:
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parents[1]
     dist = root / "dist"
     exe = dist / executable_name()
     if not exe.exists():
         print(f"Executable not found: {exe}")
-        print("Build first with platform build script.")
+        print("Build first with the platform build script.")
         return 1
 
     stamp = datetime.now().strftime("%Y%m%d-%H%M")
@@ -24,11 +24,7 @@ def main() -> int:
     release_dir.mkdir(parents=True, exist_ok=True)
 
     shutil.copy2(exe, release_dir / exe.name)
-    for file_name in [
-        ".env.example",
-        "PRODUCTION_READINESS.md",
-        "BUILD_EXECUTABLES.md",
-    ]:
+    for file_name in [".env.example", "docs/installers.md", "README.md"]:
         source = root / file_name
         if source.exists():
             shutil.copy2(source, release_dir / source.name)

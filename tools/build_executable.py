@@ -4,6 +4,10 @@ from pathlib import Path
 from typing import Optional
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
 def _resolve_icon(root: Path) -> Optional[Path]:
     icons_dir = root / "assets" / "icons"
     if sys.platform.startswith("win"):
@@ -30,28 +34,25 @@ def _resolve_icon(root: Path) -> Optional[Path]:
     return None
 
 
+def _platform_version_file(root: Path) -> Path:
+    if sys.platform.startswith("win"):
+        return root / "platforms" / "windows" / "VERSION"
+    return root / "platforms" / "macos" / "VERSION"
+
+
 def build() -> int:
-    root = Path(__file__).resolve().parent
+    root = _repo_root()
     sep = ";" if sys.platform.startswith("win") else ":"
-    add_data = []
-    files_to_bundle = [
-        "luxe-nails-queue.html",
-        "luxe-nails-employee.html",
-        "luxe-nails-mobile.html",
-        "VERSION",
-        "VERSION.windows",
-        "VERSION.macos",
-        ".env.example",
-        "BUILD_EXECUTABLES.md",
+    add_data = [
+        f"web{sep}web",
+        f"assets{sep}assets",
     ]
-    for rel in files_to_bundle:
-        if (root / rel).exists():
-            add_data.append(f"{rel}{sep}.")
-    add_data.extend([
-        f"assets/icons{sep}assets/icons",
-        f"assets/sounds{sep}assets/sounds",
-        f"assets/cursors{sep}assets/cursors",
-    ])
+    version_file = _platform_version_file(root)
+    if version_file.exists():
+        add_data.append(f"{version_file.relative_to(root).as_posix()}{sep}.")
+    env_example = root / ".env.example"
+    if env_example.exists():
+        add_data.append(f".env.example{sep}.")
 
     cmd = [
         sys.executable,
@@ -63,6 +64,10 @@ def build() -> int:
         "--windowed",
         "--name",
         "NailQue",
+        "--paths",
+        str(root / "src"),
+        "--collect-submodules",
+        "nailque",
         "--collect-all",
         "flask",
         "--collect-all",
@@ -77,7 +82,7 @@ def build() -> int:
 
     for item in add_data:
         cmd.extend(["--add-data", item])
-    cmd.append("app.py")
+    cmd.append(str(root / "src" / "nailque" / "__main__.py"))
 
     print("Building executable with command:")
     print(" ".join(cmd))
